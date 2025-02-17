@@ -1,12 +1,7 @@
 pub struct CameraPlugin;
 
-use crate::consts;
-
 use bevy::window::{CursorGrabMode, PrimaryWindow};
-use bevy::{
-    color::palettes::tailwind, input::mouse::AccumulatedMouseMotion, prelude::*,
-    render::view::RenderLayers,
-};
+use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
 use crate::AppState;
 use std::f32::consts::FRAC_PI_2;
@@ -45,7 +40,7 @@ impl Default for CameraSensitivity {
     }
 }
 
-pub const CAMERA_SPEED: f32 = 0.2;
+pub const CAMERA_SPEED: f32 = 10.;
 
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
@@ -58,16 +53,16 @@ fn input(
     let forward = camera_tf.forward().normalize();
     let right = camera_tf.right().normalize();
     if keys.pressed(KeyCode::KeyW) {
-        camera_tf.translation += forward * CAMERA_SPEED;
+        camera_tf.translation += forward * CAMERA_SPEED * time.delta_secs();
     }
     if keys.pressed(KeyCode::KeyA) {
-        camera_tf.translation -= right * CAMERA_SPEED;
+        camera_tf.translation -= right * CAMERA_SPEED * time.delta_secs();
     }
     if keys.pressed(KeyCode::KeyS) {
-        camera_tf.translation -= forward * CAMERA_SPEED;
+        camera_tf.translation -= forward * CAMERA_SPEED * time.delta_secs();
     }
     if keys.pressed(KeyCode::KeyD) {
-        camera_tf.translation += right * CAMERA_SPEED;
+        camera_tf.translation += right * CAMERA_SPEED * time.delta_secs();
     }
     if keys.just_pressed(KeyCode::Escape) {
         if let AppState::Main = *current_app_state.get() {
