@@ -4,15 +4,25 @@ use crate::consts;
 
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use bevy::{
-    color::palettes::tailwind, input::mouse::AccumulatedMouseMotion, pbr::NotShadowCaster,
-    prelude::*, render::view::RenderLayers,
+    color::palettes::tailwind, input::mouse::AccumulatedMouseMotion, prelude::*,
+    render::view::RenderLayers,
 };
+
+use crate::AppState;
 use std::f32::consts::FRAC_PI_2;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup, cursor_grab));
-        app.add_systems(Update, (input, camera_look_around));
+        app.add_systems(Startup, (cursor_grab, spawn_camera));
+        app.add_systems(Update, (input, toggle_cursor_grab));
+        app.add_systems(
+            Update,
+            (camera_look_around).run_if(in_state(AppState::Main)),
+        );
+        app.add_systems(OnEnter(AppState::Main), toggle_cursor_grab);
+        app.add_systems(OnEnter(AppState::Debug), toggle_cursor_grab);
+
+        app.insert_state(AppState::Main);
     }
 }
 
@@ -35,47 +45,14 @@ impl Default for CameraSensitivity {
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // circular base
-    commands.spawn((
-        Mesh3d(meshes.add(Circle::new(4.0))),
-        MeshMaterial3d(materials.add(Color::WHITE)),
-        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-    ));
-    // cube
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-    ));
-    // light
-    commands.spawn((
-        PointLight {
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(4.0, 8.0, 4.0),
-    ));
-    // camera
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-        MyCamera,
-        CameraSensitivity::default(),
-    ));
-}
-
 pub const CAMERA_SPEED: f32 = 0.2;
 
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mut camera_q: Query<&mut Transform, With<MyCamera>>,
-    mut exit: EventWriter<AppExit>,
+    mut app_state: ResMut<NextState<AppState>>,
+    current_app_state: Res<State<AppState>>,
 ) {
     let mut camera_tf = camera_q.single_mut();
     let forward = camera_tf.forward().normalize();
@@ -92,8 +69,14 @@ fn input(
     if keys.pressed(KeyCode::KeyD) {
         camera_tf.translation += right * CAMERA_SPEED;
     }
-    if keys.pressed(KeyCode::Escape) {
-        exit.send(AppExit::Success);
+    if keys.just_pressed(KeyCode::Escape) {
+        if let AppState::Main = *current_app_state.get() {
+            debug!("Entered debug mode");
+            app_state.set(AppState::Debug);
+        } else {
+            debug!("Entered main mode");
+            app_state.set(AppState::Main);
+        }
     }
 }
 
@@ -149,4 +132,27 @@ fn cursor_grab(mut q_windows: Query<&mut Window, With<PrimaryWindow>>) {
 
     // also hide the cursor
     primary_window.cursor_options.visible = false;
+}
+
+fn toggle_cursor_grab(
+    mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
+    current_app_state: Res<State<AppState>>,
+) {
+    let mut primary_window = q_windows.single_mut();
+    if let AppState::Main = *current_app_state.get() {
+        primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
+        primary_window.cursor_options.visible = false;
+    } else {
+        primary_window.cursor_options.grab_mode = CursorGrabMode::None;
+        primary_window.cursor_options.visible = true;
+    }
+}
+
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+        MyCamera,
+        CameraSensitivity::default(),
+    ));
 }
