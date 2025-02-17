@@ -1,0 +1,152 @@
+pub struct CameraPlugin;
+
+use crate::consts;
+
+use bevy::window::{CursorGrabMode, PrimaryWindow};
+use bevy::{
+    color::palettes::tailwind, input::mouse::AccumulatedMouseMotion, pbr::NotShadowCaster,
+    prelude::*, render::view::RenderLayers,
+};
+use std::f32::consts::FRAC_PI_2;
+
+impl Plugin for CameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, (setup, cursor_grab));
+        app.add_systems(Update, (input, camera_look_around));
+    }
+}
+
+#[derive(Component)]
+struct MyCamera;
+
+#[derive(Debug, Component, Deref, DerefMut)]
+struct CameraSensitivity(Vec2);
+
+impl Default for CameraSensitivity {
+    fn default() -> Self {
+        Self(
+            // These factors are just arbitrary mouse sensitivity values.
+            // It's often nicer to have a faster horizontal sensitivity than vertical.
+            // We use a component for them so that we can make them user-configurable at runtime
+            // for accessibility reasons.
+            // It also allows you to inspect them in an editor if you `Reflect` the component.
+            Vec2::new(0.001, 0.001),
+        )
+    }
+}
+
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    // circular base
+    commands.spawn((
+        Mesh3d(meshes.add(Circle::new(4.0))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    ));
+    // cube
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+    ));
+    // light
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
+    // camera
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+        MyCamera,
+        CameraSensitivity::default(),
+    ));
+}
+
+pub const CAMERA_SPEED: f32 = 0.2;
+
+fn input(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    mut camera_q: Query<&mut Transform, With<MyCamera>>,
+    mut exit: EventWriter<AppExit>,
+) {
+    let mut camera_tf = camera_q.single_mut();
+    let forward = camera_tf.forward().normalize();
+    let right = camera_tf.right().normalize();
+    if keys.pressed(KeyCode::KeyW) {
+        camera_tf.translation += forward * CAMERA_SPEED;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        camera_tf.translation -= right * CAMERA_SPEED;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        camera_tf.translation -= forward * CAMERA_SPEED;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        camera_tf.translation += right * CAMERA_SPEED;
+    }
+    if keys.pressed(KeyCode::Escape) {
+        exit.send(AppExit::Success);
+    }
+}
+
+// from https://bevyengine.org/examples/camera/first-person-view-model/
+fn camera_look_around(
+    accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
+    mut camera_q: Query<(&mut Transform, &CameraSensitivity), With<MyCamera>>,
+) {
+    let Ok((mut transform, camera_sensitivity)) = camera_q.get_single_mut() else {
+        return;
+    };
+    let delta = accumulated_mouse_motion.delta;
+
+    if delta != Vec2::ZERO {
+        // Note that we are not multiplying by delta_time here.
+        // The reason is that for mouse movement, we already get the full movement that happened since the last frame.
+        // This means that if we multiply by delta_time, we will get a smaller rotation than intended by the user.
+        // This situation is reversed when reading e.g. analog input from a gamepad however, where the same rules
+        // as for keyboard input apply. Such an input should be multiplied by delta_time to get the intended rotation
+        // independent of the framerate.
+        let delta_yaw = -delta.x * camera_sensitivity.x;
+        let delta_pitch = -delta.y * camera_sensitivity.y;
+
+        let (yaw, pitch, roll) = transform.rotation.to_euler(EulerRot::YXZ);
+        let yaw = yaw + delta_yaw;
+
+        // If the pitch was ±¹⁄₂ π, the camera would look straight up or down.
+        // When the user wants to move the camera back to the horizon, which way should the camera face?
+        // The camera has no way of knowing what direction was "forward" before landing in that extreme position,
+        // so the direction picked will for all intents and purposes be arbitrary.
+        // Another issue is that for mathematical reasons, the yaw will effectively be flipped when the pitch is at the extremes.
+        // To not run into these issues, we clamp the pitch to a safe range.
+        const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
+        let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
+
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+    }
+}
+
+fn cursor_grab(mut q_windows: Query<&mut Window, With<PrimaryWindow>>) {
+    let mut primary_window = q_windows.single_mut();
+
+    /*
+
+    // if you want to use the cursor, but not let it leave the window,
+    // use `Confined` mode:
+    primary_window.cursor_options.grab_mode = CursorGrabMode::Confined;
+     */
+
+    // for a game that doesn't use the cursor (like a shooter):
+    // use `Locked` mode to keep the cursor in one place
+    primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
+
+    // also hide the cursor
+    primary_window.cursor_options.visible = false;
+}
