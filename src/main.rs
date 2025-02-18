@@ -1,11 +1,14 @@
+use bevy::render::RenderPlugin;
 use bevy::{prelude::*, window::WindowResolution};
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::{Level, LogPlugin};
+use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
+use water::WaterMaterial;
 mod camera;
 mod consts;
 mod water;
@@ -47,12 +50,20 @@ fn main() {
                 level: Level::DEBUG,
                 filter: "wgpu=error,bevy_render=info,bevy_ecs=trace".to_string(),
                 custom_layer: |_| None,
+            })
+            .set(RenderPlugin {
+                render_creation: bevy::render::settings::RenderCreation::Automatic(WgpuSettings {
+                    features: WgpuFeatures::POLYGON_MODE_LINE,
+                    ..default()
+                }),
+                ..default()
             }),
     )
     .insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(RngResource(StdRng::seed_from_u64(rng.gen::<u64>())));
 
     app.add_plugins(WorldInspectorPlugin::new());
+    app.add_plugins(MaterialPlugin::<WaterMaterial>::default());
     app.add_plugins(camera::CameraPlugin);
     app.add_plugins(water::WaterPlugin);
     app.run();
