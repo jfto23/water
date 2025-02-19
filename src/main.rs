@@ -1,14 +1,16 @@
+use bevy::color::palettes::css::GREEN;
 use bevy::render::RenderPlugin;
 use bevy::{prelude::*, window::WindowResolution};
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::{Level, LogPlugin};
+use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
-use water::WaterMaterial;
+
 mod camera;
 mod consts;
 mod water;
@@ -48,7 +50,7 @@ fn main() {
             })
             .set(LogPlugin {
                 level: Level::DEBUG,
-                filter: "wgpu=error,bevy_render=info,bevy_ecs=trace".to_string(),
+                filter: "wgpu=error,bevy_render=info,bevy_ecs=trace,naga=info".to_string(),
                 custom_layer: |_| None,
             })
             .set(RenderPlugin {
@@ -59,11 +61,21 @@ fn main() {
                 ..default()
             }),
     )
+    .add_plugins(WireframePlugin)
     .insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(RngResource(StdRng::seed_from_u64(rng.gen::<u64>())));
 
+    app.insert_resource(WireframeConfig {
+        // The global wireframe config enables drawing of wireframes on every mesh,
+        // except those with `NoWireframe`. Meshes with `Wireframe` will always have a wireframe,
+        // regardless of the global configuration.
+        global: false,
+        // Controls the default color of all wireframes. Used as the default color for global wireframes.
+        // Can be changed per mesh using the `WireframeColor` component.
+        default_color: GREEN.into(),
+    });
+
     app.add_plugins(WorldInspectorPlugin::new());
-    app.add_plugins(MaterialPlugin::<WaterMaterial>::default());
     app.add_plugins(camera::CameraPlugin);
     app.add_plugins(water::WaterPlugin);
     app.run();
