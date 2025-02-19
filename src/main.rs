@@ -1,3 +1,4 @@
+use avian3d::PhysicsPlugins;
 use bevy::color::palettes::css::GREEN;
 use bevy::render::RenderPlugin;
 use bevy::{prelude::*, window::WindowResolution};
@@ -12,6 +13,7 @@ use rand::Rng;
 use rand::SeedableRng;
 
 mod camera;
+mod character;
 mod consts;
 mod water;
 
@@ -66,17 +68,14 @@ fn main() {
     .insert_resource(RngResource(StdRng::seed_from_u64(rng.gen::<u64>())));
 
     app.insert_resource(WireframeConfig {
-        // The global wireframe config enables drawing of wireframes on every mesh,
-        // except those with `NoWireframe`. Meshes with `Wireframe` will always have a wireframe,
-        // regardless of the global configuration.
         global: false,
-        // Controls the default color of all wireframes. Used as the default color for global wireframes.
-        // Can be changed per mesh using the `WireframeColor` component.
         default_color: GREEN.into(),
     });
 
-    app.add_plugins(WorldInspectorPlugin::new());
-    app.add_plugins(camera::CameraPlugin);
-    app.add_plugins(water::WaterPlugin);
-    app.run();
+    app.add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(camera::CameraPlugin)
+        .add_plugins(water::WaterPlugin)
+        .add_plugins(PhysicsPlugins::default())
+        .add_plugins(character::CharacterControllerPlugin)
+        .run();
 }
