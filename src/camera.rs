@@ -11,7 +11,7 @@ impl Plugin for CameraPlugin {
         app.add_systems(Startup, (cursor_grab, spawn_camera));
         app.add_systems(Update, (input, toggle_cursor_grab));
         app.add_systems(
-            Update,
+            FixedUpdate,
             (camera_look_around).run_if(in_state(AppState::Main)),
         );
         app.add_systems(OnEnter(AppState::Main), toggle_cursor_grab);
@@ -22,10 +22,10 @@ impl Plugin for CameraPlugin {
 }
 
 #[derive(Component)]
-struct MyCamera;
+pub struct MyCamera;
 
 #[derive(Debug, Component, Deref, DerefMut)]
-struct CameraSensitivity(Vec2);
+pub struct CameraSensitivity(Vec2);
 
 impl Default for CameraSensitivity {
     fn default() -> Self {
@@ -35,7 +35,7 @@ impl Default for CameraSensitivity {
             // We use a component for them so that we can make them user-configurable at runtime
             // for accessibility reasons.
             // It also allows you to inspect them in an editor if you `Reflect` the component.
-            Vec2::new(0.001, 0.001),
+            Vec2::new(0.003, 0.003),
         )
     }
 }
@@ -45,13 +45,15 @@ pub const CAMERA_SPEED: f32 = 10.;
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    mut camera_q: Query<&mut Transform, With<MyCamera>>,
+    //mut camera_q: Query<&mut Transform, With<MyCamera>>,
     mut app_state: ResMut<NextState<AppState>>,
     current_app_state: Res<State<AppState>>,
 ) {
+    /*
     let mut camera_tf = camera_q.single_mut();
     let forward = camera_tf.forward().normalize();
     let right = camera_tf.right().normalize();
+
     if keys.pressed(KeyCode::KeyW) {
         camera_tf.translation += forward * CAMERA_SPEED * time.delta_secs();
     }
@@ -64,6 +66,7 @@ fn input(
     if keys.pressed(KeyCode::KeyD) {
         camera_tf.translation += right * CAMERA_SPEED * time.delta_secs();
     }
+     */
     if keys.just_pressed(KeyCode::Escape) {
         if let AppState::Main = *current_app_state.get() {
             debug!("Entered debug mode");
@@ -144,10 +147,12 @@ fn toggle_cursor_grab(
 }
 
 fn spawn_camera(mut commands: Commands) {
+    /*
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
         MyCamera,
         CameraSensitivity::default(),
     ));
+     */
 }

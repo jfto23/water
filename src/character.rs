@@ -1,5 +1,8 @@
 use avian3d::{math::*, prelude::*};
+use bevy::input::mouse::*;
 use bevy::{ecs::query::Has, prelude::*};
+
+use crate::camera::MyCamera;
 
 pub struct CharacterControllerPlugin;
 
@@ -8,6 +11,7 @@ impl Plugin for CharacterControllerPlugin {
         app.add_event::<MovementAction>().add_systems(
             Update,
             (
+                mouse_input,
                 keyboard_input,
                 update_grounded,
                 movement,
@@ -21,7 +25,7 @@ impl Plugin for CharacterControllerPlugin {
 /// An event sent for a movement input action.
 #[derive(Event)]
 pub enum MovementAction {
-    Move(Vector2),
+    Move(Vector3),
     Jump,
 }
 
@@ -132,22 +136,51 @@ impl CharacterControllerBundle {
 fn keyboard_input(
     mut movement_event_writer: EventWriter<MovementAction>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    player_q: Query<(&Transform, &GlobalTransform), With<MyCamera>>,
 ) {
-    let up = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
-    let down = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
+    let forward = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
+    let back = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
     let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
     let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
 
-    let horizontal = right as i8 - left as i8;
-    let vertical = up as i8 - down as i8;
-    let direction = Vector2::new(horizontal as Scalar, vertical as Scalar).clamp_length_max(1.0);
+    let (player_tf, global_player_tf) = player_q.single();
 
-    if direction != Vector2::ZERO {
-        movement_event_writer.send(MovementAction::Move(direction));
+    let x_axis = right as i8 - left as i8;
+    let z_axis = back as i8 - forward as i8;
+    let local_direction =
+        Vector3::new(x_axis as Scalar, 0.0 as Scalar, z_axis as Scalar).clamp_length_max(1.0);
+
+    let mut global_direction = global_player_tf.affine().transform_vector3(local_direction);
+
+    global_direction.y = 0.0;
+    global_direction = global_direction.normalize();
+
+    debug!(
+        "local_direction: {:?}, global_direction: {:?}",
+        local_direction, global_direction,
+    );
+    if local_direction != Vector3::ZERO {
+        movement_event_writer.send(MovementAction::Move(global_direction));
     }
 
     if keyboard_input.just_pressed(KeyCode::Space) {
         movement_event_writer.send(MovementAction::Jump);
+    }
+}
+
+fn mouse_input(
+    mut evr_scroll: EventReader<MouseWheel>,
+    mut movement_event_writer: EventWriter<MovementAction>,
+) {
+    for ev in evr_scroll.read() {
+        match ev.unit {
+            MouseScrollUnit::Line => {
+                movement_event_writer.send(MovementAction::Jump);
+            }
+            MouseScrollUnit::Pixel => {
+                continue;
+            }
+        }
     }
 }
 
@@ -200,7 +233,21 @@ fn movement(
             match event {
                 MovementAction::Move(direction) => {
                     linear_velocity.x += direction.x * movement_acceleration.0 * delta_time;
-                    linear_velocity.z -= direction.y * movement_acceleration.0 * delta_time;
+                    linear_velocity.z += direction.z * movement_acceleration.0 * delta_time;
+
+                    /*
+
+                    let mut air_acc = air_accelerate(*direction, &linear_velocity);
+
+                    let mut accel_speed = 100. * delta_time;
+                    if accel_speed > air_acc {
+                        accel_speed = air_acc;
+                    }
+                    debug!("accell_speed: {:?}", accel_speed);
+
+                    linear_velocity.x += accel_speed;
+                    linear_velocity.z += accel_speed;
+                     */
                 }
                 MovementAction::Jump => {
                     if is_grounded {
@@ -210,6 +257,13 @@ fn movement(
             }
         }
     }
+}
+
+fn air_accelerate(wish_velocity: Vec3, current_velocity: &LinearVelocity) -> f32 {
+    let wish_speed = f32::min(30.0, current_velocity.0.length());
+    let current_speed = wish_velocity.dot(current_velocity.0);
+    let add_speed = wish_speed - current_speed;
+    return add_speed;
 }
 
 /// Slows down movement in the XZ plane.
