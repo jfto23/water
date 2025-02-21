@@ -22,7 +22,7 @@ impl Plugin for CameraPlugin {
 }
 
 #[derive(Component)]
-pub struct MyCamera;
+pub struct Player;
 
 #[derive(Debug, Component, Deref, DerefMut)]
 pub struct CameraSensitivity(Vec2);
@@ -81,9 +81,13 @@ fn input(
 // from https://bevyengine.org/examples/camera/first-person-view-model/
 fn camera_look_around(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
-    mut camera_q: Query<(&mut Transform, &CameraSensitivity), With<MyCamera>>,
+    mut player_q: Query<(&mut Transform, &CameraSensitivity), With<Player>>,
+    mut camera_q: Query<(&mut Transform), (With<Camera>, Without<Player>)>,
 ) {
-    let Ok((mut transform, camera_sensitivity)) = camera_q.get_single_mut() else {
+    let Ok((mut transform, camera_sensitivity)) = player_q.get_single_mut() else {
+        return;
+    };
+    let Ok((mut camera_tf)) = camera_q.get_single_mut() else {
         return;
     };
     let delta = accumulated_mouse_motion.delta;
@@ -110,7 +114,13 @@ fn camera_look_around(
         const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
 
-        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0., roll);
+
+        let (yaw, pitch, roll) = camera_tf.rotation.to_euler(EulerRot::YXZ);
+        let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
+
+        camera_tf.rotation = Quat::from_euler(EulerRot::YXZ, 0., pitch, 0.);
+        //debug!("camera_tf.rotation: {:?}", transform.rotation);
     }
 }
 

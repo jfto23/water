@@ -2,7 +2,7 @@ use avian3d::{math::*, prelude::*};
 use bevy::input::mouse::*;
 use bevy::{ecs::query::Has, prelude::*};
 
-use crate::camera::MyCamera;
+use crate::camera::Player;
 
 pub struct CharacterControllerPlugin;
 
@@ -136,7 +136,7 @@ impl CharacterControllerBundle {
 fn keyboard_input(
     mut movement_event_writer: EventWriter<MovementAction>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    player_q: Query<(&Transform, &GlobalTransform), With<MyCamera>>,
+    player_q: Query<(&Transform, &GlobalTransform), With<Player>>,
 ) {
     let forward = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
     let back = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
@@ -155,10 +155,12 @@ fn keyboard_input(
     global_direction.y = 0.0;
     global_direction = global_direction.normalize();
 
+    /*
     debug!(
         "local_direction: {:?}, global_direction: {:?}",
         local_direction, global_direction,
     );
+     */
     if local_direction != Vector3::ZERO {
         movement_event_writer.send(MovementAction::Move(global_direction));
     }

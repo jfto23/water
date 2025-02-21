@@ -1,9 +1,12 @@
 use avian3d::math::Scalar;
 use avian3d::prelude::*;
-use bevy::{pbr::wireframe::Wireframe, prelude::*};
+use bevy::{
+    pbr::{wireframe::Wireframe, NotShadowCaster},
+    prelude::*,
+};
 
 use crate::{
-    camera::{CameraSensitivity, MyCamera},
+    camera::{CameraSensitivity, Player},
     character::*,
 };
 
@@ -73,28 +76,43 @@ fn water_setup(
     ));
 }
 
+const DEFAULT_RENDER_LAYER: usize = 0;
+const VIEW_MODEL_RENDER_LAYER: usize = 1;
+
 fn spawn_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    commands.spawn((
-        Name::new("Player entity"),
-        Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(0.0, 1.5, 0.0),
-        CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0)).with_movement(
-            50.0,
-            0.94,
-            7.0,
-            (20.0 as Scalar).to_radians(),
-        ),
-        Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
-        Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
-        GravityScale(2.0),
-        Camera3d::default(),
-        MyCamera,
-        CameraSensitivity::default(),
-        TransformInterpolation,
-    ));
+    let player_cam = commands
+        .spawn((
+            Camera3d::default(),
+            Transform::from_xyz(0., 0.5, 0.),
+            Projection::from(PerspectiveProjection {
+                fov: 90.0_f32.to_radians(),
+                ..default()
+            }),
+        ))
+        .id();
+    commands
+        .spawn((
+            Name::new("Player entity"),
+            Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
+            MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+            Transform::from_xyz(0.0, 1.5, 0.0),
+            NotShadowCaster,
+            CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0)).with_movement(
+                50.0,
+                0.94,
+                7.0,
+                (20.0 as Scalar).to_radians(),
+            ),
+            Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
+            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
+            GravityScale(2.0),
+            Player,
+            //TransformInterpolation,
+            CameraSensitivity::default(),
+        ))
+        .add_child(player_cam);
 }
