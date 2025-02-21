@@ -24,6 +24,9 @@ impl Plugin for CameraPlugin {
 #[derive(Component)]
 pub struct Player;
 
+#[derive(Component)]
+pub struct WorldCamera;
+
 #[derive(Debug, Component, Deref, DerefMut)]
 pub struct CameraSensitivity(Vec2);
 
@@ -82,7 +85,7 @@ fn input(
 fn camera_look_around(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     mut player_q: Query<(&mut Transform, &CameraSensitivity), With<Player>>,
-    mut camera_q: Query<(&mut Transform), (With<Camera>, Without<Player>)>,
+    mut camera_q: Query<(&mut Transform), (With<WorldCamera>, Without<Player>)>,
 ) {
     let Ok((mut transform, camera_sensitivity)) = player_q.get_single_mut() else {
         return;
