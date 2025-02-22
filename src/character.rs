@@ -1,32 +1,38 @@
 use avian3d::{math::*, prelude::*};
 use bevy::input::mouse::*;
 use bevy::{ecs::query::Has, prelude::*};
+use bevy_renet::renet::RenetClient;
+use serde::{Deserialize, Serialize};
 
-use crate::camera::Player;
+use crate::camera::PlayerMarker;
+use crate::client::{ClientChannel, ClientMovement, ControlledPlayer, CurrentClientId};
 
 pub struct CharacterControllerPlugin;
 
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<MovementAction>().add_systems(
-            Update,
-            (
-                mouse_input,
-                keyboard_input,
-                update_grounded,
-                movement,
-                apply_movement_damping,
+        app.add_event::<MovementAction>()
+            .add_systems(
+                Update,
+                (
+                    mouse_input,
+                    keyboard_input,
+                    update_grounded,
+                    movement,
+                    apply_movement_damping,
+                )
+                    .chain(),
             )
-                .chain(),
-        );
+            .add_event::<ClientMovement>();
     }
 }
 
 /// An event sent for a movement input action.
-#[derive(Event)]
+#[derive(Event, Clone, Deserialize, Serialize)]
 pub enum MovementAction {
-    Move(Vector3),
+    Move([f32; 3]),
     Jump,
+    Rotate([f32; 4]),
 }
 
 /// A marker component indicating that an entity is using a character controller.
@@ -39,7 +45,7 @@ pub struct CharacterController;
 pub struct Grounded;
 /// The acceleration used for character movement.
 #[derive(Component)]
-pub struct MovementAcceleration(Scalar);
+pub struct MovementAcceleration(pub Scalar);
 
 /// The damping factor used for slowing down movement.
 #[derive(Component)]
@@ -47,7 +53,7 @@ pub struct MovementDampingFactor(Scalar);
 
 /// The strength of a jump.
 #[derive(Component)]
-pub struct JumpImpulse(Scalar);
+pub struct JumpImpulse(pub Scalar);
 
 /// The maximum angle a slope can have for a character controller
 /// to be able to climb and jump. If the slope is steeper than this angle,
@@ -136,14 +142,16 @@ impl CharacterControllerBundle {
 fn keyboard_input(
     mut movement_event_writer: EventWriter<MovementAction>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    player_q: Query<(&Transform, &GlobalTransform), With<Player>>,
+    player_q: Query<(&Transform, &GlobalTransform), With<ControlledPlayer>>,
 ) {
     let forward = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
     let back = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
     let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
     let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
 
-    let (player_tf, global_player_tf) = player_q.single();
+    let Ok((player_tf, global_player_tf)) = player_q.get_single() else {
+        return;
+    };
 
     let x_axis = right as i8 - left as i8;
     let z_axis = back as i8 - forward as i8;
@@ -162,7 +170,7 @@ fn keyboard_input(
     );
      */
     if local_direction != Vector3::ZERO {
-        movement_event_writer.send(MovementAction::Move(global_direction));
+        movement_event_writer.send(MovementAction::Move(global_direction.to_array()));
     }
 
     if keyboard_input.just_pressed(KeyCode::Space) {
@@ -206,7 +214,7 @@ fn update_grounded(
         });
 
         if is_grounded {
-            commands.entity(entity).insert(Grounded);
+            commands.entity(entity).try_insert(Grounded);
         } else {
             commands.entity(entity).remove::<Grounded>();
         }
@@ -217,25 +225,43 @@ fn update_grounded(
 fn movement(
     time: Res<Time>,
     mut movement_event_reader: EventReader<MovementAction>,
-    mut controllers: Query<(
-        &MovementAcceleration,
-        &JumpImpulse,
-        &mut LinearVelocity,
-        Has<Grounded>,
-    )>,
+    mut controllers: Query<
+        (
+            &MovementAcceleration,
+            &JumpImpulse,
+            &mut LinearVelocity,
+            Has<Grounded>,
+        ),
+        With<ControlledPlayer>,
+    >,
+    mut client: Option<ResMut<RenetClient>>,
+    client_id: Option<Res<CurrentClientId>>,
 ) {
+    // TODO CLEAN THIS MESS
+    let Some(mut client) = client else {
+        return;
+    };
+    let Some(client_id) = client_id else {
+        return;
+    };
     // Precision is adjusted so that the example works with
     // both the `f32` and `f64` features. Otherwise you don't need this.
     let delta_time = time.delta_secs_f64().adjust_precision();
 
     for event in movement_event_reader.read() {
+        let input_message = bincode::serialize(&ClientMovement {
+            movement: event.clone(),
+            client_id: client_id.0.into(),
+        })
+        .unwrap();
+        client.send_message(ClientChannel::Input, input_message);
         for (movement_acceleration, jump_impulse, mut linear_velocity, is_grounded) in
             &mut controllers
         {
             match event {
                 MovementAction::Move(direction) => {
-                    linear_velocity.x += direction.x * movement_acceleration.0 * delta_time;
-                    linear_velocity.z += direction.z * movement_acceleration.0 * delta_time;
+                    linear_velocity.x += direction[0] * movement_acceleration.0 * delta_time;
+                    linear_velocity.z += direction[2] * movement_acceleration.0 * delta_time;
 
                     /*
 
@@ -256,6 +282,7 @@ fn movement(
                         linear_velocity.y = jump_impulse.0;
                     }
                 }
+                MovementAction::Rotate(_) => {}
             }
         }
     }
@@ -269,7 +296,7 @@ fn air_accelerate(wish_velocity: Vec3, current_velocity: &LinearVelocity) -> f32
 }
 
 /// Slows down movement in the XZ plane.
-fn apply_movement_damping(mut query: Query<(&MovementDampingFactor, &mut LinearVelocity)>) {
+pub fn apply_movement_damping(mut query: Query<(&MovementDampingFactor, &mut LinearVelocity)>) {
     for (damping_factor, mut linear_velocity) in &mut query {
         // We could use `LinearDamping`, but we don't want to dampen movement along the Y axis
         linear_velocity.x *= damping_factor.0;

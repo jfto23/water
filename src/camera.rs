@@ -3,12 +3,14 @@ pub struct CameraPlugin;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 
+use crate::character::MovementAction;
+use crate::client::ControlledPlayer;
 use crate::AppState;
 use std::f32::consts::FRAC_PI_2;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (cursor_grab, spawn_camera));
+        app.add_systems(Startup, (cursor_grab));
         app.add_systems(Update, (input, toggle_cursor_grab));
         app.add_systems(
             FixedUpdate,
@@ -22,7 +24,7 @@ impl Plugin for CameraPlugin {
 }
 
 #[derive(Component)]
-pub struct Player;
+pub struct PlayerMarker;
 
 #[derive(Component)]
 pub struct WorldCamera;
@@ -84,8 +86,9 @@ fn input(
 // from https://bevyengine.org/examples/camera/first-person-view-model/
 fn camera_look_around(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
-    mut player_q: Query<(&mut Transform, &CameraSensitivity), With<Player>>,
-    mut camera_q: Query<(&mut Transform), (With<WorldCamera>, Without<Player>)>,
+    mut player_q: Query<(&mut Transform, &CameraSensitivity), With<ControlledPlayer>>,
+    mut camera_q: Query<(&mut Transform), (With<WorldCamera>, Without<ControlledPlayer>)>,
+    mut movement_action: EventWriter<MovementAction>,
 ) {
     let Ok((mut transform, camera_sensitivity)) = player_q.get_single_mut() else {
         return;
@@ -117,7 +120,9 @@ fn camera_look_around(
         const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
 
+        //todo handle rotation on server
         transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0., roll);
+        //movement_action.send(MovementAction::Rotate(rotation.to_array()));
 
         let (yaw, pitch, roll) = camera_tf.rotation.to_euler(EulerRot::YXZ);
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
@@ -159,13 +164,11 @@ fn toggle_cursor_grab(
     }
 }
 
-fn spawn_camera(mut commands: Commands) {
-    /*
+pub fn spawn_camera(mut commands: Commands) {
     commands.spawn((
+        Name::new("Server Free Cam"),
         Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-        MyCamera,
         CameraSensitivity::default(),
     ));
-     */
 }

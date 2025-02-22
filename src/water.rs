@@ -9,7 +9,7 @@ use bevy::{
 };
 
 use crate::{
-    camera::{CameraSensitivity, Player},
+    camera::{CameraSensitivity, PlayerMarker},
     character::*,
 };
 use bevy::render::view::RenderLayers;
@@ -18,7 +18,7 @@ pub struct WaterPlugin;
 
 impl Plugin for WaterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (water_setup, spawn_player));
+        app.add_systems(Startup, (water_setup /*spawn_player*/,));
     }
 }
 fn water_setup(
@@ -42,6 +42,16 @@ fn water_setup(
         Transform::from_xyz(0.0, 0.6, 0.0),
     ));
 
+    commands.spawn((
+        Name::new("Cube1"),
+        RigidBody::Static,
+        Collider::cuboid(1.0, 1.0, 1.0),
+        Mesh3d(meshes.add(Cuboid::from_length(1.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(154, 144, 255))),
+        Transform::from_xyz(4.0, 0.6, 3.0),
+    ));
+
+    /*
     commands.spawn((
         Name::new("Cube2"),
         RigidBody::Dynamic,
@@ -70,6 +80,8 @@ fn water_setup(
         MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
         Transform::from_xyz(0.0, 16.0, 0.0),
     ));
+
+     */
     // light
     commands.spawn((
         PointLight {
@@ -146,7 +158,7 @@ fn spawn_player(
             Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
             Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
             GravityScale(2.0),
-            Player,
+            PlayerMarker,
             //TransformInterpolation,
             CameraSensitivity::default(),
         ))

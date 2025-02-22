@@ -2,19 +2,27 @@ use avian3d::PhysicsPlugins;
 use bevy::color::palettes::css::GREEN;
 use bevy::render::RenderPlugin;
 use bevy::{prelude::*, window::WindowResolution};
+use bevy_renet::{
+    renet::{ClientId, RenetServer, ServerEvent},
+    RenetServerPlugin,
+};
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::{Level, LogPlugin};
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use client::ClientPlugin;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
+use server::ServerPlugin;
 
 mod camera;
 mod character;
+mod client;
 mod consts;
+mod server;
 mod water;
 
 #[derive(Resource, Deref, DerefMut)]
@@ -66,6 +74,29 @@ fn main() {
     .add_plugins(WireframePlugin)
     .insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(RngResource(StdRng::seed_from_u64(rng.gen::<u64>())));
+
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() != 2 {
+        panic!("No argument found, pass either client or server");
+    }
+
+    let exec_type = &args[1];
+    let is_host = match exec_type.as_str() {
+        "client" => false,
+        "server" => true,
+        _ => panic!("Invalid argument, must be \"client\" or \"server\"."),
+    };
+
+    debug!("is_host: {:?}", is_host);
+
+    if is_host {
+        debug!("Adding ServerPlugin to app");
+        app.add_plugins(ServerPlugin);
+    } else {
+        debug!("Adding ClientPlugin to app");
+        app.add_plugins(ClientPlugin);
+    }
 
     app.insert_resource(WireframeConfig {
         global: false,
