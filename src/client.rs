@@ -33,6 +33,8 @@ use crate::{
     server::{ServerChannel, ServerMessages},
 };
 
+use crate::network_visualizer::visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
+
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
@@ -69,8 +71,12 @@ impl Plugin for ClientPlugin {
         app.insert_resource(ClientLobby::default());
         //app.insert_resource(PlayerInput::default());
         app.insert_resource(NetworkMapping::default());
+        app.insert_resource(RenetClientVisualizer::<200>::new(
+            RenetVisualizerStyle::default(),
+        ));
 
         app.add_systems(FixedUpdate, (send_message_system, receive_message_system));
+        app.add_systems(Update, update_visualizer_system);
     }
 }
 
@@ -78,6 +84,22 @@ fn send_message_system(mut client: ResMut<RenetClient>) {
     // Send a text message to the server
     //debug!("Sending dummy message");
     //client.send_message(DefaultChannel::ReliableOrdered, "server message");
+}
+
+fn update_visualizer_system(
+    mut egui_contexts: EguiContexts,
+    mut visualizer: ResMut<RenetClientVisualizer<200>>,
+    client: Res<RenetClient>,
+    mut show_visualizer: Local<bool>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    visualizer.add_network_info(client.network_info());
+    if keyboard_input.just_pressed(KeyCode::F1) {
+        *show_visualizer = !*show_visualizer;
+    }
+    if *show_visualizer {
+        visualizer.show_window(egui_contexts.ctx_mut());
+    }
 }
 
 #[derive(Component)]

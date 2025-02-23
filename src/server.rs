@@ -26,6 +26,8 @@ use crate::{
     client::{ClientChannel, ClientMovement, ControlledPlayer},
 };
 
+use crate::network_visualizer::visualizer::RenetServerVisualizer;
+
 pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
@@ -52,6 +54,7 @@ impl Plugin for ServerPlugin {
         app.insert_resource(transport);
 
         app.add_systems(Startup, spawn_camera);
+        app.insert_resource(RenetServerVisualizer::<200>::default());
 
         app.add_systems(
             FixedUpdate,
@@ -65,6 +68,8 @@ impl Plugin for ServerPlugin {
             )
                 .chain(),
         );
+
+        app.add_systems(Update, update_visualizer_system);
     }
 }
 
@@ -156,11 +161,13 @@ fn handle_events_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut movement_event_writer: EventWriter<ClientMovement>,
+    mut visualizer: ResMut<RenetServerVisualizer<200>>,
 ) {
     for event in server_events.read() {
         match event {
             ServerEvent::ClientConnected { client_id } => {
                 debug!("Client {client_id} connected");
+                visualizer.add_client(*client_id);
 
                 // Initialize other players for this new client
                 for (entity, player, transform) in players.iter() {
@@ -206,6 +213,7 @@ fn handle_events_system(
             }
             ServerEvent::ClientDisconnected { client_id, reason } => {
                 debug!("Client {client_id} disconnected: {reason}");
+                visualizer.remove_client(*client_id);
                 if let Some(player_entity) = lobby.players.remove(client_id) {
                     commands.entity(player_entity).despawn();
                 }
@@ -293,6 +301,15 @@ fn move_players_system(
             }
         }
     }
+}
+
+fn update_visualizer_system(
+    mut egui_contexts: EguiContexts,
+    mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    server: Res<RenetServer>,
+) {
+    visualizer.update(&server);
+    visualizer.show_window(egui_contexts.ctx_mut());
 }
 
 fn server_network_sync(

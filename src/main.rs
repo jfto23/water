@@ -27,6 +27,7 @@ mod camera;
 mod character;
 mod client;
 mod consts;
+mod network_visualizer;
 mod server;
 mod water;
 
