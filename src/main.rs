@@ -1,6 +1,7 @@
 use avian3d::PhysicsPlugins;
 use bevy::color::palettes::css::GREEN;
 use bevy::render::RenderPlugin;
+use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::WindowResolution};
 use bevy_renet::{
     renet::{ClientId, RenetServer, ServerEvent},
@@ -10,7 +11,11 @@ use bevy_renet::{
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::{Level, LogPlugin};
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
+use bevy::prelude::Window;
 use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
+use bevy_egui::EguiContext;
+use bevy_egui::EguiPlugin;
+use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use client::ClientPlugin;
 use rand::rngs::StdRng;
@@ -103,10 +108,36 @@ fn main() {
         default_color: GREEN.into(),
     });
 
-    app.add_plugins(WorldInspectorPlugin::new())
+    app.add_plugins(EguiPlugin)
+        .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
         .add_plugins(camera::CameraPlugin)
         .add_plugins(water::WaterPlugin)
         .add_plugins(PhysicsPlugins::default())
         .add_plugins(character::CharacterControllerPlugin)
+        .add_systems(Update, inspector_ui)
         .run();
+}
+
+fn inspector_ui(world: &mut World) {
+    let Ok(egui_context) = world
+        .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
+        .get_single(world)
+    else {
+        return;
+    };
+    let mut egui_context = egui_context.clone();
+
+    egui::Window::new("UI").show(egui_context.get_mut(), |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            // equivalent to `WorldInspectorPlugin`
+            bevy_inspector_egui::bevy_inspector::ui_for_world(world, ui);
+
+            egui::CollapsingHeader::new("Materials").show(ui, |ui| {
+                bevy_inspector_egui::bevy_inspector::ui_for_assets::<StandardMaterial>(world, ui);
+            });
+
+            ui.heading("Entities");
+            bevy_inspector_egui::bevy_inspector::ui_for_entities(world, ui);
+        });
+    });
 }

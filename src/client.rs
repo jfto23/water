@@ -1,21 +1,28 @@
-use std::{net::UdpSocket, time::SystemTime};
+use std::{
+    net::UdpSocket,
+    time::{Duration, SystemTime},
+};
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
     character::{CharacterControllerBundle, MovementAction},
-    server::{NetworkedEntities, Player},
+    server::{connection_config, NetworkedEntities, Player},
 };
 use avian3d::{
     math::Scalar,
     prelude::{CoefficientCombine, Collider, Friction, GravityScale, Restitution},
 };
 use bevy::{pbr::NotShadowCaster, prelude::*, render::view::RenderLayers, utils::HashMap};
+use bevy_egui::EguiContexts;
 use bevy_renet::{
     netcode::{
         ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin,
         NetcodeServerTransport, ServerAuthentication, ServerConfig,
     },
-    renet::{ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer, ServerEvent},
+    renet::{
+        ChannelConfig, ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer,
+        SendType, ServerEvent,
+    },
     RenetClientPlugin, RenetServerPlugin,
 };
 use serde::{Deserialize, Serialize};
@@ -25,13 +32,14 @@ use crate::{
     consts::VIEW_MODEL_RENDER_LAYER,
     server::{ServerChannel, ServerMessages},
 };
+
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(RenetClientPlugin);
 
-        let client = RenetClient::new(ConnectionConfig::default());
+        let client = RenetClient::new(connection_config());
         app.insert_resource(client);
 
         // Setup the transport layer
@@ -105,6 +113,18 @@ impl From<ClientChannel> for u8 {
         }
     }
 }
+impl ClientChannel {
+    pub fn channels_config() -> Vec<ChannelConfig> {
+        vec![ChannelConfig {
+            channel_id: Self::Input.into(),
+            max_memory_usage_bytes: 5 * 1024 * 1024,
+            send_type: SendType::ReliableOrdered {
+                resend_time: Duration::ZERO,
+            },
+        }]
+    }
+}
+
 #[derive(Default, Resource)]
 // maps from server enttiy to client entity
 struct NetworkMapping(HashMap<Entity, Entity>);
@@ -136,7 +156,7 @@ fn receive_message_system(
                         Transform::from_xyz(0.0, 1.5, 0.0),
                         NotShadowCaster,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.89, 7.0, (20.0 as Scalar).to_radians()),
+                            .with_movement(50.0, 0.72, 7.0, (20.0 as Scalar).to_radians()),
                         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
                         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                         GravityScale(2.0),

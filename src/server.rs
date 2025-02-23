@@ -3,13 +3,20 @@ use avian3d::{
     parry::utils::hashmap::HashMap,
     prelude::{CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution},
 };
+use bevy_egui::EguiContexts;
 use serde::{Deserialize, Serialize};
-use std::{net::UdpSocket, time::SystemTime};
+use std::{
+    net::UdpSocket,
+    time::{Duration, SystemTime},
+};
 
 use bevy::{pbr::NotShadowCaster, prelude::*};
 use bevy_renet::{
     netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig},
-    renet::{ClientId, ConnectionConfig, DefaultChannel, RenetServer, ServerEvent},
+    renet::{
+        ChannelConfig, ClientId, ConnectionConfig, DefaultChannel, RenetServer, SendType,
+        ServerEvent,
+    },
     RenetServerPlugin,
 };
 
@@ -18,13 +25,14 @@ use crate::{
     character::*,
     client::{ClientChannel, ClientMovement, ControlledPlayer},
 };
+
 pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(RenetServerPlugin);
 
-        let server = RenetServer::new(ConnectionConfig::default());
+        let server = RenetServer::new(connection_config());
         app.insert_resource(server);
         app.insert_resource(ServerLobby::default());
         // Transport layer setup
@@ -48,13 +56,15 @@ impl Plugin for ServerPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                send_message_system,
-                receive_message_system,
+                //send_message_system,
+                //receive_message_system,
                 handle_events_system,
+                move_players_system,
+                //apply_movement_damping,
                 server_network_sync,
-            ),
+            )
+                .chain(),
         );
-        app.add_systems(FixedUpdate, (move_players_system, apply_movement_damping));
     }
 }
 
@@ -62,7 +72,7 @@ fn send_message_system(mut server: ResMut<RenetServer>) {
     let channel_id = 0;
     // Send a text message for all clients
     // The enum DefaultChannel describe the channels used by the default configuration
-    server.broadcast_message(DefaultChannel::ReliableOrdered, "server message");
+    //server.broadcast_message(DefaultChannel::ReliableOrdered, "server message");
 }
 
 fn receive_message_system(mut server: ResMut<RenetServer>) {
@@ -83,9 +93,28 @@ pub enum ServerChannel {
 impl From<ServerChannel> for u8 {
     fn from(channel_id: ServerChannel) -> Self {
         match channel_id {
-            ServerChannel::NetworkedEntities => 0,
-            ServerChannel::ServerMessages => 1,
+            ServerChannel::ServerMessages => 0,
+            ServerChannel::NetworkedEntities => 1,
         }
+    }
+}
+
+impl ServerChannel {
+    pub fn channels_config() -> Vec<ChannelConfig> {
+        vec![
+            ChannelConfig {
+                channel_id: Self::ServerMessages.into(),
+                max_memory_usage_bytes: 10 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::from_millis(200),
+                },
+            },
+            ChannelConfig {
+                channel_id: Self::NetworkedEntities.into(),
+                max_memory_usage_bytes: 10 * 1024 * 1024,
+                send_type: SendType::Unreliable,
+            },
+        ]
     }
 }
 
@@ -154,7 +183,7 @@ fn handle_events_system(
                         NotShadowCaster,
                         transform,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.89, 7.0, (20.0 as Scalar).to_radians()),
+                            .with_movement(50.0, 0.72, 7.0, (20.0 as Scalar).to_radians()),
                         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
                         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                         GravityScale(2.0),
@@ -283,4 +312,12 @@ fn server_network_sync(
 
     let sync_message = bincode::serialize(&networked_entities).unwrap();
     server.broadcast_message(ServerChannel::NetworkedEntities, sync_message);
+}
+
+pub fn connection_config() -> ConnectionConfig {
+    ConnectionConfig {
+        available_bytes_per_tick: 1024 * 1024,
+        client_channels_config: ClientChannel::channels_config(),
+        server_channels_config: ServerChannel::channels_config(),
+    }
 }
