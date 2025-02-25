@@ -10,9 +10,14 @@ use crate::{
 };
 use avian3d::{
     math::Scalar,
-    prelude::{CoefficientCombine, Collider, Friction, GravityScale, Restitution},
+    prelude::{
+        CoefficientCombine, Collider, Friction, GravityScale, Restitution, TransformInterpolation,
+    },
 };
-use bevy::{pbr::NotShadowCaster, prelude::*, render::view::RenderLayers, utils::HashMap};
+use bevy::{
+    color::palettes::css::WHITE, pbr::NotShadowCaster, prelude::*, render::view::RenderLayers,
+    utils::HashMap,
+};
 use bevy_egui::EguiContexts;
 use bevy_renet::{
     netcode::{
@@ -178,12 +183,12 @@ fn receive_message_system(
                         Transform::from_xyz(0.0, 1.5, 0.0),
                         NotShadowCaster,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.72, 7.0, (20.0 as Scalar).to_radians()),
+                            .with_movement(50.0, 0.86, 7.0, (20.0 as Scalar).to_radians()),
                         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
                         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                         GravityScale(2.0),
                         PlayerMarker,
-                        //TransformInterpolation,
+                        TransformInterpolation,
                         CameraSensitivity::default(),
                         Player { id },
                     ))
@@ -223,7 +228,23 @@ fn receive_message_system(
                             RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
                         ))
                         .id();
+
+                    let arm_mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.5));
+                    let arm_material = materials.add(Color::from(WHITE));
+                    let arm = commands
+                        .spawn((
+                            Name::new("Player Arm"),
+                            Mesh3d(arm_mesh),
+                            MeshMaterial3d(arm_material),
+                            Transform::from_xyz(0.3, -0.2, -0.3),
+                            // Ensure the arm is only rendered by the view model camera.
+                            RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
+                            NotShadowCaster,
+                        ))
+                        .id();
+
                     commands.entity(client_entity).add_child(view_model_cam);
+                    commands.entity(client_entity).add_child(arm);
                     commands.entity(client_entity).insert(Name::new("MyPlayer"));
                 }
 
@@ -257,21 +278,22 @@ fn receive_message_system(
                 let rotation = Quat::from_array(networked_entities.rotations[i]);
                 let transform = Transform {
                     translation,
-                    //rotation,
+                    rotation,
                     ..Default::default()
                 };
+                /*
                 debug!(
                     "Updating transform of {:?}, New Transform: {:?}",
                     entity, transform
                 );
+                 */
 
                 let Ok(mut player_tf) = players_q.get_mut(*entity) else {
                     continue;
                 };
 
-                //player_tf.translation = translation;
-
-                player_tf.translation = player_tf.translation.lerp(translation, 0.5);
+                player_tf.translation = translation;
+                player_tf.rotation = rotation;
 
                 //commands.entity(*entity).insert(transform);
             }

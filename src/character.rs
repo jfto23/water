@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use avian3d::{math::*, prelude::*};
 use bevy::input::mouse::*;
+use bevy::time::common_conditions::on_timer;
 use bevy::{ecs::query::Has, prelude::*};
 use bevy_renet::renet::RenetClient;
 use serde::{Deserialize, Serialize};
@@ -12,16 +15,10 @@ pub struct CharacterControllerPlugin;
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<MovementAction>()
+            .add_systems(Update, (mouse_input, keyboard_input, movement))
             .add_systems(
-                Update,
-                (
-                    mouse_input,
-                    keyboard_input,
-                    update_grounded,
-                    movement,
-                    apply_movement_damping,
-                )
-                    .chain(),
+                FixedUpdate,
+                (update_grounded, apply_movement_damping).chain(),
             )
             .add_event::<ClientMovement>();
     }
@@ -249,12 +246,6 @@ fn movement(
     let delta_time = time.delta_secs_f64().adjust_precision();
 
     for event in movement_event_reader.read() {
-        let input_message = bincode::serialize(&ClientMovement {
-            movement: event.clone(),
-            client_id: client_id.0.into(),
-        })
-        .unwrap();
-        client.send_message(ClientChannel::Input, input_message);
         for (movement_acceleration, jump_impulse, mut linear_velocity, is_grounded) in
             &mut controllers
         {
@@ -285,6 +276,14 @@ fn movement(
                 MovementAction::Rotate(_) => {}
             }
         }
+        //todo. send the inputs to server. Send a "start_pressed" to server and "stop_pressed" to server to avoid spamming messages
+        //https://gamedev.stackexchange.com/questions/74655/what-to-send-to-server-in-real-time-fps-game
+        let input_message = bincode::serialize(&ClientMovement {
+            movement: event.clone(),
+            client_id: client_id.0.into(),
+        })
+        .unwrap();
+        client.send_message(ClientChannel::Input, input_message);
     }
 }
 

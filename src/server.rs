@@ -1,7 +1,10 @@
 use avian3d::{
     math::Scalar,
     parry::utils::hashmap::HashMap,
-    prelude::{CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution},
+    prelude::{
+        CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
+        TransformInterpolation,
+    },
 };
 use bevy_egui::EguiContexts;
 use serde::{Deserialize, Serialize};
@@ -10,7 +13,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use bevy::{pbr::NotShadowCaster, prelude::*};
+use bevy::{
+    pbr::NotShadowCaster,
+    prelude::*,
+    time::common_conditions::{on_real_timer, on_timer},
+};
 use bevy_renet::{
     netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig},
     renet::{
@@ -64,9 +71,15 @@ impl Plugin for ServerPlugin {
                 handle_events_system,
                 move_players_system,
                 //apply_movement_damping,
-                server_network_sync,
+                //server_network_sync,
             )
                 .chain(),
+        );
+
+        //https://www.reddit.com/r/gamedev/comments/4eigzo/generally_how_often_do_most_realtime_multiplayer/
+        app.add_systems(
+            Update,
+            server_network_sync.run_if(on_timer(Duration::from_millis(50))),
         );
 
         app.add_systems(Update, update_visualizer_system);
@@ -190,12 +203,12 @@ fn handle_events_system(
                         NotShadowCaster,
                         transform,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.72, 7.0, (20.0 as Scalar).to_radians()),
+                            .with_movement(50.0, 0.86, 7.0, (20.0 as Scalar).to_radians()),
                         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
                         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                         GravityScale(2.0),
                         PlayerMarker,
-                        //TransformInterpolation,
+                        TransformInterpolation,
                         CameraSensitivity::default(),
                         Player { id: *client_id },
                     ))

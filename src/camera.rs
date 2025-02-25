@@ -120,9 +120,9 @@ fn camera_look_around(
         const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
 
-        //todo handle rotation on server
-        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0., roll);
-        //movement_action.send(MovementAction::Rotate(rotation.to_array()));
+        let rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0., roll);
+        transform.rotation = rotation;
+        movement_action.send(MovementAction::Rotate(rotation.to_array()));
 
         let (yaw, pitch, roll) = camera_tf.rotation.to_euler(EulerRot::YXZ);
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
