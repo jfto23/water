@@ -8,17 +8,26 @@ use bevy_renet::renet::RenetClient;
 use serde::{Deserialize, Serialize};
 
 use crate::camera::PlayerMarker;
-use crate::client::{ClientChannel, ClientMovement, ControlledPlayer, CurrentClientId};
+use crate::client::{
+    ClientButtonState, ClientChannel, ClientInput, ClientMovement, ControlledPlayer,
+    CurrentClientId,
+};
+use crate::input::{InputMap, MovementIntent};
 
 pub struct CharacterControllerPlugin;
 
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<MovementAction>()
-            .add_systems(Update, (mouse_input, keyboard_input, movement))
+            .add_systems(Update, (mouse_input))
             .add_systems(
                 FixedUpdate,
-                (update_grounded, apply_movement_damping).chain(),
+                (
+                    update_grounded,
+                    apply_movement_damping,
+                    movement,
+                    movement_2,
+                ),
             )
             .add_event::<ClientMovement>();
     }
@@ -46,7 +55,7 @@ pub struct MovementAcceleration(pub Scalar);
 
 /// The damping factor used for slowing down movement.
 #[derive(Component)]
-pub struct MovementDampingFactor(Scalar);
+pub struct MovementDampingFactor(pub Scalar);
 
 /// The strength of a jump.
 #[derive(Component)]
@@ -135,46 +144,6 @@ impl CharacterControllerBundle {
     }
 }
 
-/// Sends [`MovementAction`] events based on keyboard input.
-fn keyboard_input(
-    mut movement_event_writer: EventWriter<MovementAction>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    player_q: Query<(&Transform, &GlobalTransform), With<ControlledPlayer>>,
-) {
-    let forward = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
-    let back = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
-    let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
-    let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
-
-    let Ok((player_tf, global_player_tf)) = player_q.get_single() else {
-        return;
-    };
-
-    let x_axis = right as i8 - left as i8;
-    let z_axis = back as i8 - forward as i8;
-    let local_direction =
-        Vector3::new(x_axis as Scalar, 0.0 as Scalar, z_axis as Scalar).clamp_length_max(1.0);
-
-    let mut global_direction = global_player_tf.affine().transform_vector3(local_direction);
-
-    global_direction.y = 0.0;
-    global_direction = global_direction.normalize();
-
-    /*
-    debug!(
-        "local_direction: {:?}, global_direction: {:?}",
-        local_direction, global_direction,
-    );
-     */
-    if local_direction != Vector3::ZERO {
-        movement_event_writer.send(MovementAction::Move(global_direction.to_array()));
-    }
-
-    if keyboard_input.just_pressed(KeyCode::Space) {
-        movement_event_writer.send(MovementAction::Jump);
-    }
-}
-
 fn mouse_input(
     mut evr_scroll: EventReader<MouseWheel>,
     mut movement_event_writer: EventWriter<MovementAction>,
@@ -220,7 +189,7 @@ fn update_grounded(
 
 /// Responds to [`MovementAction`] events and moves character controllers accordingly.
 fn movement(
-    time: Res<Time>,
+    time_fixed: Res<Time<Fixed>>,
     mut movement_event_reader: EventReader<MovementAction>,
     mut controllers: Query<
         (
@@ -228,33 +197,31 @@ fn movement(
             &JumpImpulse,
             &mut LinearVelocity,
             Has<Grounded>,
+            &mut Transform,
+            &MovementIntent,
         ),
         With<ControlledPlayer>,
     >,
-    mut client: Option<ResMut<RenetClient>>,
-    client_id: Option<Res<CurrentClientId>>,
 ) {
-    // TODO CLEAN THIS MESS
-    let Some(mut client) = client else {
-        return;
-    };
-    let Some(client_id) = client_id else {
-        return;
-    };
-    // Precision is adjusted so that the example works with
-    // both the `f32` and `f64` features. Otherwise you don't need this.
-    let delta_time = time.delta_secs_f64().adjust_precision();
+    let delta_time = time_fixed.delta_secs();
 
     for event in movement_event_reader.read() {
-        for (movement_acceleration, jump_impulse, mut linear_velocity, is_grounded) in
-            &mut controllers
+        for (
+            movement_acceleration,
+            jump_impulse,
+            mut linear_velocity,
+            is_grounded,
+            mut player_tf,
+            move_intent,
+        ) in &mut controllers
         {
             match event {
                 MovementAction::Move(direction) => {
-                    linear_velocity.x += direction[0] * movement_acceleration.0 * delta_time;
-                    linear_velocity.z += direction[2] * movement_acceleration.0 * delta_time;
-
                     /*
+                    linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
+                    linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
+                    debug!("delta_time: {:?}", delta_time);
+                    //debug!("linear_velocity: {:?}", linear_velocity);
 
                     let mut air_acc = air_accelerate(*direction, &linear_velocity);
 
@@ -271,19 +238,25 @@ fn movement(
                 MovementAction::Jump => {
                     if is_grounded {
                         linear_velocity.y = jump_impulse.0;
+                        debug!("jumping");
                     }
                 }
-                MovementAction::Rotate(_) => {}
+                MovementAction::Rotate(rotation) => {
+                    player_tf.rotation = Quat::from_array(*rotation);
+                }
             }
         }
-        //todo. send the inputs to server. Send a "start_pressed" to server and "stop_pressed" to server to avoid spamming messages
-        //https://gamedev.stackexchange.com/questions/74655/what-to-send-to-server-in-real-time-fps-game
-        let input_message = bincode::serialize(&ClientMovement {
-            movement: event.clone(),
-            client_id: client_id.0.into(),
-        })
-        .unwrap();
-        client.send_message(ClientChannel::Input, input_message);
+    }
+}
+
+fn movement_2(
+    time_fixed: Res<Time<Fixed>>,
+    mut controllers: Query<(&MovementAcceleration, &mut LinearVelocity, &MovementIntent)>,
+) {
+    let delta_time = time_fixed.delta_secs();
+    for (movement_acceleration, mut linear_velocity, move_intent) in &mut controllers {
+        linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
+        linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
     }
 }
 

@@ -27,6 +27,7 @@ mod camera;
 mod character;
 mod client;
 mod consts;
+mod input;
 mod network_visualizer;
 mod server;
 mod water;
@@ -48,7 +49,7 @@ fn main() {
     #[cfg(debug_assertions)] // debug/dev builds only
     {
         use bevy::diagnostic::LogDiagnosticsPlugin;
-        //app.add_plugins(LogDiagnosticsPlugin::default());
+        app.add_plugins(LogDiagnosticsPlugin::default());
     }
     app.add_plugins(
         DefaultPlugins
@@ -115,6 +116,7 @@ fn main() {
         .add_plugins(water::WaterPlugin)
         .add_plugins(PhysicsPlugins::default())
         .add_plugins(character::CharacterControllerPlugin)
+        .add_plugins(input::InputPlugin)
         .add_systems(Update, inspector_ui)
         .run();
 }

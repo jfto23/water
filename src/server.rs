@@ -1,5 +1,5 @@
 use avian3d::{
-    math::Scalar,
+    math::{Scalar, Vector3},
     parry::utils::hashmap::HashMap,
     prelude::{
         CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
@@ -9,6 +9,7 @@ use avian3d::{
 use bevy_egui::EguiContexts;
 use serde::{Deserialize, Serialize};
 use std::{
+    f32::consts::FRAC_PI_2,
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
@@ -30,8 +31,13 @@ use bevy_renet::{
 use crate::{
     camera::{spawn_camera, CameraSensitivity, PlayerMarker},
     character::*,
-    client::{ClientChannel, ClientMovement, ControlledPlayer},
+    client::{
+        ClientButtonState, ClientChannel, ClientInput, ClientMouseMovement, ClientMovement,
+        ControlledPlayer,
+    },
+    input::{InputMap, MovementIntent},
 };
+use avian3d::math::AdjustPrecision;
 
 use crate::network_visualizer::visualizer::RenetServerVisualizer;
 
@@ -63,18 +69,17 @@ impl Plugin for ServerPlugin {
         app.add_systems(Startup, spawn_camera);
         app.insert_resource(RenetServerVisualizer::<200>::default());
 
+        app.add_systems(FixedUpdate, handle_events_system);
         app.add_systems(
             FixedUpdate,
             (
-                //send_message_system,
-                //receive_message_system,
-                handle_events_system,
-                move_players_system,
-                //apply_movement_damping,
+                server_movement,
+                server_mouse,
                 //server_network_sync,
-            )
-                .chain(),
+            ), //.after(handle_events_system)
+               //.chain(),
         );
+        //app.add_systems(FixedUpdate, server_mouse.after(handle_events_system));
 
         //https://www.reddit.com/r/gamedev/comments/4eigzo/generally_how_often_do_most_realtime_multiplayer/
         app.add_systems(
@@ -83,6 +88,13 @@ impl Plugin for ServerPlugin {
         );
 
         app.add_systems(Update, update_visualizer_system);
+
+        app.add_systems(
+            FixedUpdate,
+            (update_client_input_state, read_client_input_state),
+        );
+
+        app.add_event::<ServerMovementAction>();
     }
 }
 
@@ -153,6 +165,7 @@ pub struct NetworkedEntities {
     pub entities: Vec<Entity>,
     pub translations: Vec<[f32; 3]>,
     pub rotations: Vec<[f32; 4]>,
+    pub velocities: Vec<[f32; 3]>,
 }
 
 #[derive(Debug, Component)]
@@ -174,6 +187,7 @@ fn handle_events_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut movement_event_writer: EventWriter<ClientMovement>,
+    mut mouse_event_writer: EventWriter<ClientMouseMovement>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
 ) {
     for event in server_events.read() {
@@ -203,13 +217,15 @@ fn handle_events_system(
                         NotShadowCaster,
                         transform,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.86, 7.0, (20.0 as Scalar).to_radians()),
+                            .with_movement(50.0, 0.9, 7.0, (20.0 as Scalar).to_radians()),
                         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
                         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                         GravityScale(2.0),
                         PlayerMarker,
+                        MovementIntent::default(),
                         TransformInterpolation,
                         CameraSensitivity::default(),
+                        InputMap::default(),
                         Player { id: *client_id },
                     ))
                     .id();
@@ -241,76 +257,187 @@ fn handle_events_system(
     for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, ClientChannel::Input) {
             let client_move: ClientMovement = bincode::deserialize(&message).unwrap();
+            debug!("received ClientMovement {:?}", client_move);
             if let Some(player_entity) = lobby.players.get(&client_move.client_id) {
                 movement_event_writer.send(client_move);
+            }
+        }
+        while let Some(message) = server.receive_message(client_id, ClientChannel::MouseInput) {
+            let client_mouse: ClientMouseMovement = bincode::deserialize(&message).unwrap();
+            debug!("received ClientMouseMovement {:?}", client_mouse);
+            if let Some(player_entity) = lobby.players.get(&client_mouse.client_id) {
+                mouse_event_writer.send(client_mouse);
             }
         }
     }
 }
 
-fn move_players_system(
+fn update_client_input_state(
     mut movement_event_reader: EventReader<ClientMovement>,
-    mut controllers: Query<
-        (
-            Entity,
-            &MovementAcceleration,
-            &JumpImpulse,
-            &mut LinearVelocity,
-            &mut Transform,
-            Has<Grounded>,
-        ),
-        With<PlayerMarker>,
-    >,
+    mut controllers: Query<(Entity, &mut InputMap), With<PlayerMarker>>,
     server_lobby: Res<ServerLobby>,
     time: Res<Time>,
 ) {
     for ev in movement_event_reader.read() {
         debug!("processing client movement event");
-        for (
-            player_ent,
-            movement_acceleration,
-            jump_impulse,
-            mut linear_velocity,
-            mut tf,
-            is_grounded,
-        ) in &mut controllers
-        {
+        for (player_ent, mut input_map) in &mut controllers {
             if server_lobby
                 .players
                 .get(&ev.client_id)
                 .is_some_and(|inner| *inner == player_ent)
             {
-                debug!("Applying server movement on {:?}", player_ent);
-                match ev.movement {
-                    MovementAction::Move(direction) => {
-                        linear_velocity.x +=
-                            direction[0] * movement_acceleration.0 * time.delta_secs();
-                        linear_velocity.z +=
-                            direction[2] * movement_acceleration.0 * time.delta_secs();
+                debug!("Modifying input map for {:?}", player_ent);
+                match ev.button_state {
+                    ClientButtonState::Pressed(input) => input_map.0.insert(input, true),
+                    ClientButtonState::Released(input) => input_map.0.insert(input, false),
+                };
+            }
+        }
+    }
+}
 
-                        /*
+// reads all clients input maps and sends MovementAction event
+fn read_client_input_state(
+    mut clients_q: Query<(
+        &InputMap,
+        &Transform,
+        &GlobalTransform,
+        Entity,
+        &mut MovementIntent,
+    )>,
+    mut movement_event_writer: EventWriter<ServerMovementAction>,
+) {
+    for (input_map, client_tf, client_global_tf, ent, mut move_intent) in clients_q.iter_mut() {
+        let mut x_axis: i8 = 0;
+        let mut z_axis: i8 = 0;
 
-                        let mut air_acc = air_accelerate(*direction, &linear_velocity);
-
-                        let mut accel_speed = 100. * delta_time;
-                        if accel_speed > air_acc {
-                            accel_speed = air_acc;
-                        }
-                        debug!("accell_speed: {:?}", accel_speed);
-
-                        linear_velocity.x += accel_speed;
-                        linear_velocity.z += accel_speed;
-                         */
-                    }
-                    MovementAction::Jump => {
-                        if is_grounded {
-                            linear_velocity.y = jump_impulse.0;
-                        }
-                    }
-                    MovementAction::Rotate(arr) => {
-                        tf.rotation = Quat::from_array(arr);
-                    }
+        input_map.0.iter().for_each(|(input, pressed)| {
+            if !*pressed {
+                return;
+            }
+            match *input {
+                ClientInput::Forward => {
+                    z_axis -= 1;
                 }
+                ClientInput::Back => {
+                    z_axis += 1;
+                }
+                ClientInput::Left => {
+                    x_axis -= 1;
+                }
+                ClientInput::Right => {
+                    x_axis += 1;
+                }
+                ClientInput::Jump => {
+                    debug!("player is jumping");
+                    movement_event_writer.send(ServerMovementAction {
+                        action: MovementAction::Jump,
+                        ent,
+                    });
+                }
+            }
+        });
+
+        let local_direction =
+            Vector3::new(x_axis as Scalar, 0.0 as Scalar, z_axis as Scalar).clamp_length_max(1.0);
+
+        let mut global_direction = client_global_tf.affine().transform_vector3(local_direction);
+
+        global_direction.y = 0.0;
+        global_direction = global_direction.normalize();
+
+        if local_direction != Vector3::ZERO {
+            move_intent.0 = global_direction;
+            movement_event_writer.send(ServerMovementAction {
+                action: MovementAction::Move(global_direction.to_array()),
+                ent,
+            });
+        } else {
+            move_intent.0 = Vector3::ZERO;
+        }
+    }
+}
+
+#[derive(Event, Clone)]
+pub struct ServerMovementAction {
+    action: MovementAction,
+    ent: Entity,
+}
+
+fn server_movement(
+    time_fixed: Res<Time<Fixed>>,
+    mut movement_event_reader: EventReader<ServerMovementAction>,
+    mut controllers: Query<(
+        &MovementAcceleration,
+        &JumpImpulse,
+        &mut LinearVelocity,
+        Has<Grounded>,
+    )>,
+) {
+    let delta_time = time_fixed.delta_secs();
+    for event in movement_event_reader.read() {
+        //debug!("reading movement action on the server");
+        let Ok((movement_acceleration, jump_impulse, mut linear_velocity, is_grounded)) =
+            controllers.get_mut(event.ent)
+        else {
+            continue;
+        };
+        match event.action {
+            MovementAction::Move(direction) => {
+                /*
+                linear_velocity.x += direction[0] * movement_acceleration.0 * delta_time;
+                linear_velocity.z += direction[2] * movement_acceleration.0 * delta_time;
+                debug!("delta_time: {:?}", delta_time);
+
+
+                let mut air_acc = air_accelerate(*direction, &linear_velocity);
+
+                let mut accel_speed = 100. * delta_time;
+                if accel_speed > air_acc {
+                    accel_speed = air_acc;
+                }
+                debug!("accell_speed: {:?}", accel_speed);
+
+                linear_velocity.x += accel_speed;
+                linear_velocity.z += accel_speed;
+                 */
+            }
+            MovementAction::Jump => {
+                if is_grounded {
+                    linear_velocity.y = jump_impulse.0;
+                }
+            }
+            MovementAction::Rotate(_) => {}
+        }
+    }
+}
+
+fn server_mouse(
+    mut mouse_event: EventReader<ClientMouseMovement>,
+    mut player_q: Query<(Entity, &mut Transform, &CameraSensitivity)>,
+    server_lobby: Res<ServerLobby>,
+) {
+    for event in mouse_event.read() {
+        for (player_ent, mut player_tf, player_camera_sens) in player_q.iter_mut() {
+            if server_lobby
+                .players
+                .get(&event.client_id)
+                .is_some_and(|inner| *inner == player_ent)
+            {
+                debug!("Mouse movement for {:?} ", player_ent);
+                /*
+
+                let delta_yaw = -event.mouse_delta.x;
+                let delta_pitch = -event.mouse_delta.y;
+
+                let (yaw, pitch, roll) = player_tf.rotation.to_euler(EulerRot::YXZ);
+                let yaw = yaw + delta_yaw;
+
+                const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
+                let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
+                 */
+
+                player_tf.rotation = event.rotation;
             }
         }
     }
@@ -327,10 +454,10 @@ fn update_visualizer_system(
 
 fn server_network_sync(
     mut server: ResMut<RenetServer>,
-    query: Query<(Entity, &Transform), With<PlayerMarker>>,
+    query: Query<(Entity, &Transform, &LinearVelocity), With<PlayerMarker>>,
 ) {
     let mut networked_entities = NetworkedEntities::default();
-    for (entity, transform) in query.iter() {
+    for (entity, transform, velocity) in query.iter() {
         networked_entities.entities.push(entity);
         networked_entities
             .translations
@@ -338,6 +465,7 @@ fn server_network_sync(
         networked_entities
             .rotations
             .push(transform.rotation.to_array());
+        networked_entities.velocities.push(velocity.to_array());
     }
 
     let sync_message = bincode::serialize(&networked_entities).unwrap();

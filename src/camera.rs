@@ -1,23 +1,27 @@
 pub struct CameraPlugin;
 
+use bevy::time::common_conditions::on_timer;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
+use bevy_renet::renet::RenetClient;
 
 use crate::character::MovementAction;
-use crate::client::ControlledPlayer;
+use crate::client::{ClientChannel, ClientMouseMovement, ControlledPlayer, CurrentClientId};
 use crate::AppState;
 use std::f32::consts::FRAC_PI_2;
+use std::time::Duration;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, (cursor_grab));
         app.add_systems(Update, (input, toggle_cursor_grab));
         app.add_systems(
-            FixedUpdate,
-            (camera_look_around).run_if(in_state(AppState::Main)),
+            Update,
+            (camera_look_around /*camera_look_around_network*/,).run_if(in_state(AppState::Main)),
         );
         app.add_systems(OnEnter(AppState::Main), toggle_cursor_grab);
         app.add_systems(OnEnter(AppState::Debug), toggle_cursor_grab);
+        app.add_event::<ClientMouseMovement>();
 
         app.insert_state(AppState::Main);
     }
@@ -86,11 +90,19 @@ fn input(
 // from https://bevyengine.org/examples/camera/first-person-view-model/
 fn camera_look_around(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
-    mut player_q: Query<(&mut Transform, &CameraSensitivity), With<ControlledPlayer>>,
+    player_q: Query<(&Transform, &CameraSensitivity), With<ControlledPlayer>>,
     mut camera_q: Query<(&mut Transform), (With<WorldCamera>, Without<ControlledPlayer>)>,
     mut movement_action: EventWriter<MovementAction>,
+    mut client: Option<ResMut<RenetClient>>,
+    client_id: Option<Res<CurrentClientId>>,
 ) {
-    let Ok((mut transform, camera_sensitivity)) = player_q.get_single_mut() else {
+    let Some(mut client) = client else {
+        return;
+    };
+    let Some(client_id) = client_id else {
+        return;
+    };
+    let Ok((transform, camera_sensitivity)) = player_q.get_single() else {
         return;
     };
     let Ok((mut camera_tf)) = camera_q.get_single_mut() else {
@@ -121,16 +133,55 @@ fn camera_look_around(
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
 
         let rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0., roll);
-        transform.rotation = rotation;
+        //transform.rotation = rotation;
         movement_action.send(MovementAction::Rotate(rotation.to_array()));
 
         let (yaw, pitch, roll) = camera_tf.rotation.to_euler(EulerRot::YXZ);
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
 
+        let input_message = bincode::serialize(&ClientMouseMovement {
+            rotation,
+            client_id: client_id.0.into(),
+        })
+        .unwrap();
+        client.send_message(ClientChannel::MouseInput, input_message);
+
         camera_tf.rotation = Quat::from_euler(EulerRot::YXZ, 0., pitch, 0.);
         //debug!("camera_tf.rotation: {:?}", transform.rotation);
     }
 }
+
+/*
+fn camera_look_around_network(
+    accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
+    mut client: Option<ResMut<RenetClient>>,
+    client_id: Option<Res<CurrentClientId>>,
+    player_q: Query<&CameraSensitivity, With<ControlledPlayer>>,
+) {
+    let Some(mut client) = client else {
+        return;
+    };
+    let Some(client_id) = client_id else {
+        return;
+    };
+    let Ok(camera_sensitivity) = player_q.get_single() else {
+        return;
+    };
+    let delta = accumulated_mouse_motion.delta;
+
+    if delta == Vec2::ZERO {
+        return;
+    }
+    //https://gamedev.stackexchange.com/questions/118981/sending-a-players-mouse-movement-to-the-server-in-an-fps
+    let input_message = bincode::serialize(&ClientMouseMovement {
+        mouse_delta: delta * camera_sensitivity.0,
+        client_id: client_id.0.into(),
+    })
+    .unwrap();
+    client.send_message(ClientChannel::MouseInput, input_message);
+}
+
+*/
 
 fn cursor_grab(mut q_windows: Query<&mut Window, With<PrimaryWindow>>) {
     let mut primary_window = q_windows.single_mut();

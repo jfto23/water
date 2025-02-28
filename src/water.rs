@@ -27,6 +27,7 @@ fn water_setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.spawn((
+        Name::new("Floor"),
         RigidBody::Static,
         Collider::cylinder(30.0, 0.1),
         Mesh3d(meshes.add(Cylinder::new(30.0, 0.1))),

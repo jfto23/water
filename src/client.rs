@@ -6,12 +6,14 @@ use std::{
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
     character::{CharacterControllerBundle, MovementAction},
+    input::{InputMap, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
 };
 use avian3d::{
     math::Scalar,
     prelude::{
-        CoefficientCombine, Collider, Friction, GravityScale, Restitution, TransformInterpolation,
+        CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
+        TransformInterpolation,
     },
 };
 use bevy::{
@@ -123,32 +125,63 @@ struct PlayerInfo {
     server_entity: Entity,
 }
 
-#[derive(Event, Clone, Deserialize, Serialize)]
+#[derive(Event, Clone, Deserialize, Serialize, Debug)]
 pub struct ClientMovement {
-    pub movement: MovementAction,
+    pub button_state: ClientButtonState,
     pub client_id: u64,
+}
+
+#[derive(Event, Clone, Deserialize, Serialize, Debug)]
+pub struct ClientMouseMovement {
+    pub rotation: Quat, // this is mouse delta * camera sens of player
+    pub client_id: u64,
+}
+
+#[derive(Deserialize, Serialize, Copy, Clone, Eq, Hash, PartialEq, Debug)]
+pub enum ClientInput {
+    Forward,
+    Back,
+    Right,
+    Left,
+    Jump,
+}
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug)]
+pub enum ClientButtonState {
+    Pressed(ClientInput),
+    Released(ClientInput),
+    //Once(ClientInput),
 }
 
 pub enum ClientChannel {
     Input,
+    MouseInput,
 }
 
 impl From<ClientChannel> for u8 {
     fn from(channel_id: ClientChannel) -> Self {
         match channel_id {
             ClientChannel::Input => 0,
+            ClientChannel::MouseInput => 1,
         }
     }
 }
 impl ClientChannel {
     pub fn channels_config() -> Vec<ChannelConfig> {
-        vec![ChannelConfig {
-            channel_id: Self::Input.into(),
-            max_memory_usage_bytes: 5 * 1024 * 1024,
-            send_type: SendType::ReliableOrdered {
-                resend_time: Duration::ZERO,
+        vec![
+            ChannelConfig {
+                channel_id: Self::Input.into(),
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::ReliableOrdered {
+                    resend_time: Duration::ZERO,
+                },
             },
-        }]
+            ChannelConfig {
+                channel_id: Self::MouseInput.into(),
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::Unreliable,
+            },
+        ]
     }
 }
 
@@ -164,7 +197,7 @@ fn receive_message_system(
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
     client_id: Res<CurrentClientId>,
-    mut players_q: Query<&mut Transform, With<PlayerMarker>>,
+    mut players_q: Query<(&mut Transform, &mut LinearVelocity), With<PlayerMarker>>,
 ) {
     while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
@@ -183,13 +216,15 @@ fn receive_message_system(
                         Transform::from_xyz(0.0, 1.5, 0.0),
                         NotShadowCaster,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.86, 7.0, (20.0 as Scalar).to_radians()),
+                            .with_movement(50.0, 0.9, 7.0, (20.0 as Scalar).to_radians()),
                         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
                         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                         GravityScale(2.0),
                         PlayerMarker,
+                        MovementIntent::default(),
                         TransformInterpolation,
                         CameraSensitivity::default(),
+                        InputMap::default(),
                         Player { id },
                     ))
                     .id();
@@ -281,6 +316,7 @@ fn receive_message_system(
                     rotation,
                     ..Default::default()
                 };
+                let velocity = LinearVelocity(networked_entities.velocities[i].into());
                 /*
                 debug!(
                     "Updating transform of {:?}, New Transform: {:?}",
@@ -288,12 +324,13 @@ fn receive_message_system(
                 );
                  */
 
-                let Ok(mut player_tf) = players_q.get_mut(*entity) else {
+                let Ok((mut player_tf, mut player_velocity)) = players_q.get_mut(*entity) else {
                     continue;
                 };
 
                 player_tf.translation = translation;
-                player_tf.rotation = rotation;
+                //player_tf.rotation = rotation;
+                *player_velocity = velocity;
 
                 //commands.entity(*entity).insert(transform);
             }
