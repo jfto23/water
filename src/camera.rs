@@ -5,8 +5,11 @@ use bevy::window::{CursorGrabMode, PrimaryWindow};
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 use bevy_renet::renet::RenetClient;
 
-use crate::character::MovementAction;
-use crate::client::{ClientChannel, ClientMouseMovement, ControlledPlayer, CurrentClientId};
+use crate::character::PlayerAction;
+use crate::client::{
+    ClientChannel, ClientLookDirection, ClientMouseMovement, ControlledPlayer, CurrentClientId,
+};
+use crate::input::LookDirection;
 use crate::AppState;
 use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
@@ -21,6 +24,8 @@ impl Plugin for CameraPlugin {
         );
         app.add_systems(OnEnter(AppState::Main), toggle_cursor_grab);
         app.add_systems(OnEnter(AppState::Debug), toggle_cursor_grab);
+        app.add_systems(PostUpdate, sync_look_direction);
+        app.add_systems(FixedUpdate, send_look_direction);
         app.add_event::<ClientMouseMovement>();
 
         app.insert_state(AppState::Main);
@@ -92,7 +97,7 @@ fn camera_look_around(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     player_q: Query<(&Transform, &CameraSensitivity), With<ControlledPlayer>>,
     mut camera_q: Query<(&mut Transform), (With<WorldCamera>, Without<ControlledPlayer>)>,
-    mut movement_action: EventWriter<MovementAction>,
+    mut movement_action: EventWriter<PlayerAction>,
     mut client: Option<ResMut<RenetClient>>,
     client_id: Option<Res<CurrentClientId>>,
 ) {
@@ -134,7 +139,7 @@ fn camera_look_around(
 
         let rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0., roll);
         //transform.rotation = rotation;
-        movement_action.send(MovementAction::Rotate(rotation.to_array()));
+        movement_action.send(PlayerAction::Rotate(rotation.to_array()));
 
         let (yaw, pitch, roll) = camera_tf.rotation.to_euler(EulerRot::YXZ);
         let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
@@ -148,6 +153,42 @@ fn camera_look_around(
 
         camera_tf.rotation = Quat::from_euler(EulerRot::YXZ, 0., pitch, 0.);
         //debug!("camera_tf.rotation: {:?}", transform.rotation);
+    }
+}
+
+fn sync_look_direction(
+    mut look_direction_q: Query<&mut LookDirection, With<ControlledPlayer>>,
+    mut camera_q: Query<(&mut GlobalTransform), With<WorldCamera>>,
+) {
+    let Ok(mut look_dir) = look_direction_q.get_single_mut() else {
+        return;
+    };
+    let Ok(mut camera_global_tf) = camera_q.get_single_mut() else {
+        return;
+    };
+
+    look_dir.0 = camera_global_tf.forward().normalize();
+    //debug!("look_dir: {:?}", look_dir);
+}
+
+fn send_look_direction(
+    look_direction_q: Query<&LookDirection, With<ControlledPlayer>>,
+    mut client: Option<ResMut<RenetClient>>,
+    client_id: Option<Res<CurrentClientId>>,
+) {
+    let Some(mut client) = client else {
+        return;
+    };
+    let Some(client_id) = client_id else {
+        return;
+    };
+    for look_dir in look_direction_q.iter() {
+        let input_message = bincode::serialize(&ClientLookDirection {
+            dir: look_dir.0,
+            client_id: client_id.0.into(),
+        })
+        .unwrap();
+        client.send_message(ClientChannel::ClientData, input_message);
     }
 }
 

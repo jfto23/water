@@ -3,7 +3,7 @@ use avian3d::{
     parry::utils::hashmap::HashMap,
     prelude::{
         CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
-        TransformInterpolation,
+        RigidBody, TransformInterpolation,
     },
 };
 use bevy_egui::EguiContexts;
@@ -32,10 +32,12 @@ use crate::{
     camera::{spawn_camera, CameraSensitivity, PlayerMarker},
     character::*,
     client::{
-        ClientButtonState, ClientChannel, ClientInput, ClientMouseMovement, ClientMovement,
-        ControlledPlayer,
+        ClientButtonState, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement,
+        ClientMovement, ControlledPlayer,
     },
-    input::{InputMap, MovementIntent},
+    consts::{ROCKET_SPEED, SHOOT_COOLDOWN},
+    input::{InputMap, LookDirection, MovementIntent},
+    water::Rocket,
 };
 use avian3d::math::AdjustPrecision;
 
@@ -73,9 +75,9 @@ impl Plugin for ServerPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                server_movement,
+                handle_server_player_action,
                 server_mouse,
-                //server_network_sync,
+                tick_shoot_cooldown, //server_network_sync,
             ), //.after(handle_events_system)
                //.chain(),
         );
@@ -94,7 +96,7 @@ impl Plugin for ServerPlugin {
             (update_client_input_state, read_client_input_state),
         );
 
-        app.add_event::<ServerMovementAction>();
+        app.add_event::<ServerPlayerAction>();
     }
 }
 
@@ -158,6 +160,10 @@ pub enum ServerMessages {
     PlayerRemove {
         id: ClientId,
     },
+    BulletCreate {
+        translation: [f32; 3],
+        dir: [f32; 3], // normalized
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -173,6 +179,9 @@ pub struct Player {
     pub id: ClientId,
 }
 
+#[derive(Debug, Component)]
+pub struct WeaponCooldown(Timer);
+
 #[derive(Debug, Default, Resource)]
 pub struct ServerLobby {
     pub players: HashMap<ClientId, Entity>,
@@ -181,7 +190,7 @@ pub struct ServerLobby {
 fn handle_events_system(
     mut server_events: EventReader<ServerEvent>,
     mut server: ResMut<RenetServer>,
-    players: Query<(Entity, &Player, &Transform)>,
+    mut players: Query<(Entity, &Player, &Transform, &mut LookDirection)>,
     mut lobby: ResMut<ServerLobby>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -197,7 +206,7 @@ fn handle_events_system(
                 visualizer.add_client(*client_id);
 
                 // Initialize other players for this new client
-                for (entity, player, transform) in players.iter() {
+                for (entity, player, transform, _) in players.iter() {
                     let translation: [f32; 3] = transform.translation.into();
                     let message = bincode::serialize(&ServerMessages::PlayerCreate {
                         id: player.id,
@@ -230,6 +239,15 @@ fn handle_events_system(
                     ))
                     .id();
 
+                commands
+                    .entity(player_entity)
+                    .insert(LookDirection::default());
+                commands
+                    .entity(player_entity)
+                    .insert(WeaponCooldown(Timer::new(
+                        Duration::from_secs_f32(SHOOT_COOLDOWN),
+                        TimerMode::Once,
+                    )));
                 lobby.players.insert(*client_id, player_entity);
                 let translation: [f32; 3] = transform.translation.into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {
@@ -269,6 +287,16 @@ fn handle_events_system(
                 mouse_event_writer.send(client_mouse);
             }
         }
+        while let Some(message) = server.receive_message(client_id, ClientChannel::ClientData) {
+            let client_data: ClientLookDirection = bincode::deserialize(&message).unwrap();
+            //debug!("received ClientLookDirection {:?}", client_data);
+            if let Some(player_entity) = lobby.players.get(&client_data.client_id) {
+                let Ok((_, _, _, mut look_dir)) = players.get_mut(*player_entity) else {
+                    continue;
+                };
+                look_dir.0 = client_data.dir;
+            }
+        }
     }
 }
 
@@ -305,7 +333,7 @@ fn read_client_input_state(
         Entity,
         &mut MovementIntent,
     )>,
-    mut movement_event_writer: EventWriter<ServerMovementAction>,
+    mut player_action: EventWriter<ServerPlayerAction>,
 ) {
     for (input_map, client_tf, client_global_tf, ent, mut move_intent) in clients_q.iter_mut() {
         let mut x_axis: i8 = 0;
@@ -330,8 +358,15 @@ fn read_client_input_state(
                 }
                 ClientInput::Jump => {
                     debug!("player is jumping");
-                    movement_event_writer.send(ServerMovementAction {
-                        action: MovementAction::Jump,
+                    player_action.send(ServerPlayerAction {
+                        action: PlayerAction::Jump,
+                        ent,
+                    });
+                }
+                ClientInput::Shoot => {
+                    debug!("player is shooting");
+                    player_action.send(ServerPlayerAction {
+                        action: PlayerAction::Shoot,
                         ent,
                     });
                 }
@@ -348,8 +383,8 @@ fn read_client_input_state(
 
         if local_direction != Vector3::ZERO {
             move_intent.0 = global_direction;
-            movement_event_writer.send(ServerMovementAction {
-                action: MovementAction::Move(global_direction.to_array()),
+            player_action.send(ServerPlayerAction {
+                action: PlayerAction::Move(global_direction.to_array()),
                 ent,
             });
         } else {
@@ -359,31 +394,43 @@ fn read_client_input_state(
 }
 
 #[derive(Event, Clone)]
-pub struct ServerMovementAction {
-    action: MovementAction,
+pub struct ServerPlayerAction {
+    action: PlayerAction,
     ent: Entity,
 }
 
-fn server_movement(
+fn handle_server_player_action(
     time_fixed: Res<Time<Fixed>>,
-    mut movement_event_reader: EventReader<ServerMovementAction>,
+    mut movement_event_reader: EventReader<ServerPlayerAction>,
     mut controllers: Query<(
-        &MovementAcceleration,
         &JumpImpulse,
         &mut LinearVelocity,
         Has<Grounded>,
+        &Transform,
+        &mut WeaponCooldown,
+        &LookDirection,
     )>,
+    mut commands: Commands,
+    mut server: ResMut<RenetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let delta_time = time_fixed.delta_secs();
     for event in movement_event_reader.read() {
         //debug!("reading movement action on the server");
-        let Ok((movement_acceleration, jump_impulse, mut linear_velocity, is_grounded)) =
-            controllers.get_mut(event.ent)
+        let Ok((
+            jump_impulse,
+            mut linear_velocity,
+            is_grounded,
+            player_tf,
+            mut weapon_timer,
+            look_direction,
+        )) = controllers.get_mut(event.ent)
         else {
             continue;
         };
         match event.action {
-            MovementAction::Move(direction) => {
+            PlayerAction::Move(direction) => {
                 /*
                 linear_velocity.x += direction[0] * movement_acceleration.0 * delta_time;
                 linear_velocity.z += direction[2] * movement_acceleration.0 * delta_time;
@@ -402,13 +449,43 @@ fn server_movement(
                 linear_velocity.z += accel_speed;
                  */
             }
-            MovementAction::Jump => {
+            PlayerAction::Jump => {
                 if is_grounded {
                     linear_velocity.y = jump_impulse.0;
                 }
             }
-            MovementAction::Rotate(_) => {}
+            PlayerAction::Rotate(_) => {}
+            PlayerAction::Shoot => {
+                if weapon_timer.0.finished() {
+                    weapon_timer.0.reset();
+                    // todo: should be based on camera, not player_tf
+                    let spawn_location = player_tf.translation + (look_direction.0 * 2.0);
+                    let rocket_speed = look_direction.0 * ROCKET_SPEED;
+                    commands.spawn((
+                        Name::new("Bullet"),
+                        Rocket,
+                        LinearVelocity(rocket_speed),
+                        RigidBody::Kinematic,
+                        Collider::cuboid(0.2, 0.2, 0.2),
+                        Mesh3d(meshes.add(Cuboid::from_length(0.2))),
+                        MeshMaterial3d(materials.add(Color::srgb_u8(154, 109, 100))),
+                        Transform::from_translation(spawn_location),
+                    ));
+                    let message = bincode::serialize(&ServerMessages::BulletCreate {
+                        translation: spawn_location.into(),
+                        dir: look_direction.0.to_array(),
+                    })
+                    .unwrap();
+                    server.broadcast_message(ServerChannel::ServerMessages, message);
+                }
+            }
         }
+    }
+}
+
+fn tick_shoot_cooldown(mut timer_q: Query<&mut WeaponCooldown>, time: Res<Time>) {
+    for mut timer in timer_q.iter_mut() {
+        timer.0.tick(time.delta());
     }
 }
 
@@ -454,7 +531,7 @@ fn update_visualizer_system(
 
 fn server_network_sync(
     mut server: ResMut<RenetServer>,
-    query: Query<(Entity, &Transform, &LinearVelocity), With<PlayerMarker>>,
+    query: Query<(Entity, &Transform, &LinearVelocity), Or<(With<PlayerMarker>, With<Rocket>)>>,
 ) {
     let mut networked_entities = NetworkedEntities::default();
     for (entity, transform, velocity) in query.iter() {

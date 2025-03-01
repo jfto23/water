@@ -167,3 +167,6 @@ fn spawn_player(
         .add_child(view_model_cam)
         .add_child(arm);
 }
+
+#[derive(Component)]
+pub struct Rocket;

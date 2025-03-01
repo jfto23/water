@@ -26,8 +26,13 @@ pub struct InputMap(pub HashMap<ClientInput, bool>);
 #[derive(Component, Default, Debug, Clone)]
 pub struct MovementIntent(pub Vec3);
 
+// synchronized to camera.forward()
+#[derive(Component, Default, Debug, Clone)]
+pub struct LookDirection(pub Vec3);
+
 fn update_input_map(
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mouse_input: Res<ButtonInput<MouseButton>>,
     mut input_q: Query<&mut InputMap, With<ControlledPlayer>>,
 ) {
     let Ok((mut input_map)) = input_q.get_single_mut() else {
@@ -38,17 +43,19 @@ fn update_input_map(
     let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
     let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
     let jump = keyboard_input.any_pressed([KeyCode::Space]);
+    let shoot = mouse_input.any_pressed([MouseButton::Left]);
 
     input_map.0.insert(ClientInput::Forward, forward);
     input_map.0.insert(ClientInput::Back, back);
     input_map.0.insert(ClientInput::Left, left);
     input_map.0.insert(ClientInput::Right, right);
     input_map.0.insert(ClientInput::Jump, jump);
+    input_map.0.insert(ClientInput::Shoot, shoot);
     //debug!("inputmap: {:?}", input_map);
 }
 
 fn read_input_map(
-    mut movement_event_writer: EventWriter<MovementAction>,
+    mut movement_event_writer: EventWriter<PlayerAction>,
     mut player_q: Query<
         (
             &Transform,
@@ -86,7 +93,6 @@ fn read_input_map(
     );
      */
     if local_direction != Vector3::ZERO {
-        movement_event_writer.send(MovementAction::Move(global_direction.to_array()));
         move_intent.0 = global_direction;
     } else {
         move_intent.0 = Vector3::ZERO;
@@ -97,7 +103,7 @@ fn read_input_map(
         .get(&ClientInput::Jump)
         .is_some_and(|inner| *inner)
     {
-        movement_event_writer.send(MovementAction::Jump);
+        movement_event_writer.send(PlayerAction::Jump);
     }
 }
 
@@ -127,11 +133,12 @@ fn send_input_map(
 */
 
 fn keyboard_network_input(
-    mut movement_event_writer: EventWriter<MovementAction>,
+    mut movement_event_writer: EventWriter<PlayerAction>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     player_q: Query<(&Transform, &GlobalTransform), With<ControlledPlayer>>,
     mut client: Option<ResMut<RenetClient>>,
     client_id: Option<Res<CurrentClientId>>,
+    mouse_input: Res<ButtonInput<MouseButton>>,
 ) {
     // TODO CLEAN THIS MESS XDDDDDDDD
     let Some(mut client) = client else {
@@ -145,12 +152,14 @@ fn keyboard_network_input(
     let left_pressed = keyboard_input.any_just_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
     let right_pressed = keyboard_input.any_just_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
     let jump_pressed = keyboard_input.any_just_pressed([KeyCode::Space]);
+    let shoot_pressed = mouse_input.any_just_pressed([MouseButton::Left]);
 
     let forward_released = keyboard_input.any_just_released([KeyCode::KeyW, KeyCode::ArrowUp]);
     let back_released = keyboard_input.any_just_released([KeyCode::KeyS, KeyCode::ArrowDown]);
     let left_released = keyboard_input.any_just_released([KeyCode::KeyA, KeyCode::ArrowLeft]);
     let right_released = keyboard_input.any_just_released([KeyCode::KeyD, KeyCode::ArrowRight]);
     let jump_released = keyboard_input.any_just_released([KeyCode::Space]);
+    let shoot_released = mouse_input.any_just_released([MouseButton::Left]);
 
     //todo: I dont think we need to track jump pressed/unpressed. just consider every single press
     [
@@ -159,6 +168,7 @@ fn keyboard_network_input(
         generate_client_button_state(left_pressed, left_released, ClientInput::Left),
         generate_client_button_state(right_pressed, right_released, ClientInput::Right),
         generate_client_button_state(jump_pressed, jump_released, ClientInput::Jump),
+        generate_client_button_state(shoot_pressed, shoot_released, ClientInput::Shoot),
     ]
     .into_iter()
     .flatten()

@@ -5,15 +5,17 @@ use std::{
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
-    character::{CharacterControllerBundle, MovementAction},
-    input::{InputMap, MovementIntent},
+    character::{CharacterControllerBundle, PlayerAction},
+    consts::ROCKET_SPEED,
+    input::{InputMap, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
+    water::Rocket,
 };
 use avian3d::{
     math::Scalar,
     prelude::{
         CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
-        TransformInterpolation,
+        RigidBody, TransformInterpolation,
     },
 };
 use bevy::{
@@ -137,6 +139,12 @@ pub struct ClientMouseMovement {
     pub client_id: u64,
 }
 
+#[derive(Event, Clone, Deserialize, Serialize, Debug)]
+pub struct ClientLookDirection {
+    pub dir: Vec3,
+    pub client_id: u64,
+}
+
 #[derive(Deserialize, Serialize, Copy, Clone, Eq, Hash, PartialEq, Debug)]
 pub enum ClientInput {
     Forward,
@@ -144,6 +152,7 @@ pub enum ClientInput {
     Right,
     Left,
     Jump,
+    Shoot,
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug)]
@@ -156,6 +165,7 @@ pub enum ClientButtonState {
 pub enum ClientChannel {
     Input,
     MouseInput,
+    ClientData, // client authoritative data (?)
 }
 
 impl From<ClientChannel> for u8 {
@@ -163,6 +173,7 @@ impl From<ClientChannel> for u8 {
         match channel_id {
             ClientChannel::Input => 0,
             ClientChannel::MouseInput => 1,
+            ClientChannel::ClientData => 2,
         }
     }
 }
@@ -178,6 +189,11 @@ impl ClientChannel {
             },
             ChannelConfig {
                 channel_id: Self::MouseInput.into(),
+                max_memory_usage_bytes: 5 * 1024 * 1024,
+                send_type: SendType::Unreliable,
+            },
+            ChannelConfig {
+                channel_id: Self::ClientData.into(),
                 max_memory_usage_bytes: 5 * 1024 * 1024,
                 send_type: SendType::Unreliable,
             },
@@ -229,6 +245,9 @@ fn receive_message_system(
                     ))
                     .id();
 
+                commands
+                    .entity(client_entity)
+                    .insert(LookDirection::default());
                 if client_id.0 == id {
                     debug!("spawning world camera and view model camera");
                     commands.entity(client_entity).insert(ControlledPlayer);
@@ -300,6 +319,19 @@ fn receive_message_system(
                     commands.entity(client_entity).despawn();
                     network_mapping.0.remove(&server_entity);
                 }
+            }
+            ServerMessages::BulletCreate { translation, dir } => {
+                let rocket_speed = Vec3::from_array(dir) * ROCKET_SPEED;
+                commands.spawn((
+                    Name::new("Bullet"),
+                    Rocket,
+                    LinearVelocity(rocket_speed),
+                    RigidBody::Kinematic,
+                    Collider::cuboid(0.2, 0.2, 0.2),
+                    Mesh3d(meshes.add(Cuboid::from_length(0.2))),
+                    MeshMaterial3d(materials.add(Color::srgb_u8(154, 109, 100))),
+                    Transform::from_translation(translation.into()),
+                ));
             }
         }
     }

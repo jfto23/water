@@ -18,7 +18,7 @@ pub struct CharacterControllerPlugin;
 
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<MovementAction>()
+        app.add_event::<PlayerAction>()
             .add_systems(Update, (mouse_input))
             .add_systems(
                 FixedUpdate,
@@ -35,9 +35,10 @@ impl Plugin for CharacterControllerPlugin {
 
 /// An event sent for a movement input action.
 #[derive(Event, Clone, Deserialize, Serialize)]
-pub enum MovementAction {
+pub enum PlayerAction {
     Move([f32; 3]),
     Jump,
+    Shoot,
     Rotate([f32; 4]),
 }
 
@@ -146,12 +147,12 @@ impl CharacterControllerBundle {
 
 fn mouse_input(
     mut evr_scroll: EventReader<MouseWheel>,
-    mut movement_event_writer: EventWriter<MovementAction>,
+    mut movement_event_writer: EventWriter<PlayerAction>,
 ) {
     for ev in evr_scroll.read() {
         match ev.unit {
             MouseScrollUnit::Line => {
-                movement_event_writer.send(MovementAction::Jump);
+                movement_event_writer.send(PlayerAction::Jump);
             }
             MouseScrollUnit::Pixel => {
                 continue;
@@ -190,7 +191,7 @@ fn update_grounded(
 /// Responds to [`MovementAction`] events and moves character controllers accordingly.
 fn movement(
     time_fixed: Res<Time<Fixed>>,
-    mut movement_event_reader: EventReader<MovementAction>,
+    mut movement_event_reader: EventReader<PlayerAction>,
     mut controllers: Query<
         (
             &MovementAcceleration,
@@ -216,7 +217,7 @@ fn movement(
         ) in &mut controllers
         {
             match event {
-                MovementAction::Move(direction) => {
+                PlayerAction::Move(direction) => {
                     /*
                     linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
                     linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
@@ -235,20 +236,22 @@ fn movement(
                     linear_velocity.z += accel_speed;
                      */
                 }
-                MovementAction::Jump => {
+                PlayerAction::Jump => {
                     if is_grounded {
                         linear_velocity.y = jump_impulse.0;
                         debug!("jumping");
                     }
                 }
-                MovementAction::Rotate(rotation) => {
+                PlayerAction::Rotate(rotation) => {
                     player_tf.rotation = Quat::from_array(*rotation);
                 }
+                _ => {}
             }
         }
     }
 }
 
+// moves all players based on their intent
 fn movement_2(
     time_fixed: Res<Time<Fixed>>,
     mut controllers: Query<(&MovementAcceleration, &mut LinearVelocity, &MovementIntent)>,
