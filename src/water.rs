@@ -2,6 +2,10 @@ use crate::camera::*;
 use crate::consts::*;
 use avian3d::math::Scalar;
 use avian3d::prelude::*;
+use bevy::color::palettes::css::GREEN;
+use bevy::color::palettes::css::PURPLE;
+use bevy::gizmos;
+use bevy::math::NormedVectorSpace;
 use bevy::{
     color::palettes::css::WHITE,
     pbr::{wireframe::Wireframe, NotShadowCaster},
@@ -18,7 +22,13 @@ pub struct WaterPlugin;
 
 impl Plugin for WaterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (water_setup /*spawn_player*/,));
+        app.add_systems(Startup, (water_setup /*spawn_player*/,))
+            .add_systems(
+                FixedUpdate,
+                (handle_rocket_collision, handle_rocket_explosion).chain(),
+            )
+            .add_systems(Update, (debug_rocket_explosion))
+            .add_event::<RocketExplosion>();
     }
 }
 fn water_setup(
@@ -29,8 +39,8 @@ fn water_setup(
     commands.spawn((
         Name::new("Floor"),
         RigidBody::Static,
-        Collider::cylinder(30.0, 0.1),
-        Mesh3d(meshes.add(Cylinder::new(30.0, 0.1))),
+        Collider::cylinder(300.0, 0.1),
+        Mesh3d(meshes.add(Cylinder::new(300.0, 0.1))),
         MeshMaterial3d(materials.add(Color::WHITE)),
     ));
 
@@ -50,6 +60,15 @@ fn water_setup(
         Mesh3d(meshes.add(Cuboid::from_length(1.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(154, 144, 255))),
         Transform::from_xyz(4.0, 0.6, 3.0),
+    ));
+
+    commands.spawn((
+        Name::new("Big Cube"),
+        RigidBody::Static,
+        Collider::cuboid(10.0, 10.0, 10.0),
+        Mesh3d(meshes.add(Cuboid::from_length(10.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(154, 144, 255))),
+        Transform::from_xyz(2.0, 5.0, -17.0),
     ));
 
     /*
@@ -170,3 +189,106 @@ fn spawn_player(
 
 #[derive(Component)]
 pub struct Rocket;
+
+#[derive(Event, Clone)]
+pub struct RocketExplosion {
+    pos: Vec3,
+    ent: Entity,
+}
+
+fn handle_rocket_collision(
+    collisions: Res<Collisions>,
+    bodies: Query<&RigidBody>,
+    rockets: Query<(Entity, &Transform), With<Rocket>>,
+    collider_parents: Query<&ColliderParent, Without<Sensor>>,
+    mut explosion: EventWriter<RocketExplosion>,
+) {
+    for contacts in collisions.iter() {
+        let Ok([collider_parent1, collider_parent2]) =
+            collider_parents.get_many([contacts.entity1, contacts.entity2])
+        else {
+            continue;
+        };
+
+        let (ent, rocket_tf) = if let Ok((ent, rocket_tf)) = rockets.get(collider_parent1.get()) {
+            (ent, rocket_tf)
+        } else if let Ok((ent, rocket_tf)) = rockets.get(collider_parent2.get()) {
+            (ent, rocket_tf)
+        } else {
+            continue;
+        };
+
+        explosion.send(RocketExplosion {
+            pos: rocket_tf.translation,
+            ent,
+        });
+    }
+}
+
+#[derive(Default)]
+pub struct PreviousImpulses {
+    pub start: Vec<Vec3>,
+    pub end: Vec<Vec3>,
+}
+
+fn handle_rocket_explosion(
+    mut explosion: EventReader<RocketExplosion>,
+    mut commands: Commands,
+    mut players_q: Query<(&mut LinearVelocity, &Transform), With<PlayerMarker>>,
+) {
+    for ev in explosion.read() {
+        debug!("explosion at {:?}", ev.pos);
+        commands.entity(ev.ent).despawn();
+
+        for (mut player_vel, player_tf) in players_q.iter_mut() {
+            if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
+                let distance = player_tf.translation - ev.pos;
+                let normalized_impulse = distance.normalize();
+
+                //player_vel.0 += normalized_impulse * ROCKET_EXPLOSION_FORCE * (1.0 / distance.norm_squared());
+                player_vel.0 += normalized_impulse * ROCKET_EXPLOSION_FORCE;
+                debug!(
+                    "impulse vector {:?}",
+                    normalized_impulse * ROCKET_EXPLOSION_FORCE
+                );
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct PreviousExplosions {
+    pub explosions: Vec<Vec3>,
+}
+
+fn debug_rocket_explosion(
+    mut explosion: EventReader<RocketExplosion>,
+    mut gizmos: Gizmos,
+    mut previous_explosions: Local<PreviousExplosions>,
+    mut previous_impulses: Local<PreviousImpulses>,
+    mut players_q: Query<(&mut LinearVelocity, &Transform), With<PlayerMarker>>,
+) {
+    previous_explosions.explosions.iter().for_each(|pos| {
+        gizmos.sphere(*pos, ROCKET_EXPLOSION_RADIUS, PURPLE);
+    });
+    previous_impulses
+        .start
+        .iter()
+        .enumerate()
+        .for_each(|(i, _)| {
+            gizmos.line(previous_impulses.start[i], previous_impulses.end[i], GREEN);
+        });
+    for ev in explosion.read() {
+        // todo make this server authoritative.
+        // it sometimes collides only on the server but then the client will not see the explosion
+        debug!("explosion at {:?}", ev.pos);
+        previous_explosions.explosions.push(ev.pos);
+
+        for (mut player_vel, player_tf) in players_q.iter_mut() {
+            if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
+                previous_impulses.start.push(ev.pos);
+                previous_impulses.end.push(player_tf.translation);
+            }
+        }
+    }
+}

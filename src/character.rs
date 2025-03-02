@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use avian3d::{math::*, prelude::*};
 use bevy::input::mouse::*;
+use bevy::math::NormedVectorSpace;
 use bevy::time::common_conditions::on_timer;
 use bevy::{ecs::query::Has, prelude::*};
 use bevy_renet::renet::RenetClient;
@@ -12,6 +13,7 @@ use crate::client::{
     ClientButtonState, ClientChannel, ClientInput, ClientMovement, ControlledPlayer,
     CurrentClientId,
 };
+use crate::consts::PSEUDO_MAX_AIR_SPEED;
 use crate::input::{InputMap, MovementIntent};
 
 pub struct CharacterControllerPlugin;
@@ -258,20 +260,61 @@ fn movement_2(
 ) {
     let delta_time = time_fixed.delta_secs();
     for (movement_acceleration, mut linear_velocity, move_intent) in &mut controllers {
-        linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
-        linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
+        //linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
+        //linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
+        debug!("velocity: {:?}", linear_velocity.length());
+
+        // Vector projection of Current velocity onto accelDir.
+        let proj_vel = linear_velocity.0.dot(move_intent.0);
+
+        // Accelerated velocity in direction of movment
+        let mut accel_vel = movement_acceleration.0 * delta_time;
+
+        // If necessary, truncate the accelerated velocity so the vector projection does not exceed max_velocity
+        if proj_vel + accel_vel > PSEUDO_MAX_AIR_SPEED {
+            accel_vel = PSEUDO_MAX_AIR_SPEED - proj_vel;
+        }
+
+        linear_velocity.0 += move_intent.0 * accel_vel;
     }
 }
 
-fn air_accelerate(wish_velocity: Vec3, current_velocity: &LinearVelocity) -> f32 {
-    let wish_speed = f32::min(30.0, current_velocity.0.length());
-    let current_speed = wish_velocity.dot(current_velocity.0);
-    let add_speed = wish_speed - current_speed;
-    return add_speed;
+/*
+fn air_movement(
+    mut controllers: Query<
+        (&MovementAcceleration, &mut LinearVelocity, &MovementIntent),
+        Without<Grounded>,
+    >,
+
+    time_fixed: Res<Time<Fixed>>,
+) {
+    let delta_time = time_fixed.delta_secs();
+    for (movement_acceleration, mut linear_velocity, move_intent) in &mut controllers {
+        let proj = linear_velocity.0.project_onto(move_intent.0);
+
+        let is_away = move_intent.0.dot(proj) <= 0.0;
+
+        if proj.norm() < MAX_AIR_SPEED || is_away {
+            let mut vc = move_intent.0 * 10.0;
+
+            if !is_away {
+                vc = vc.clamp_length_max(MAX_AIR_SPEED - proj.norm());
+            } else {
+                vc = vc.clamp_length_max(MAX_AIR_SPEED + proj.norm());
+            }
+
+            linear_velocity.0 += delta_time * vc;
+        }
+    }
 }
 
+
+*/
+
 /// Slows down movement in the XZ plane.
-pub fn apply_movement_damping(mut query: Query<(&MovementDampingFactor, &mut LinearVelocity)>) {
+pub fn apply_movement_damping(
+    mut query: Query<(&MovementDampingFactor, &mut LinearVelocity), With<Grounded>>,
+) {
     for (damping_factor, mut linear_velocity) in &mut query {
         // We could use `LinearDamping`, but we don't want to dampen movement along the Y axis
         linear_velocity.x *= damping_factor.0;
