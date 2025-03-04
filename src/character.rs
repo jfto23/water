@@ -21,7 +21,7 @@ pub struct CharacterControllerPlugin;
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<PlayerAction>()
-            .add_systems(Update, (mouse_input))
+            .add_systems(Update, (mouse_input, show_player_ui, update_player_ui))
             .add_systems(
                 FixedUpdate,
                 (
@@ -29,9 +29,11 @@ impl Plugin for CharacterControllerPlugin {
                     apply_movement_damping,
                     movement,
                     movement_2,
+                    //check_player_death,
                 ),
             )
-            .add_event::<ClientMovement>();
+            .add_event::<ClientMovement>()
+            .register_type::<Health>();
     }
 }
 
@@ -69,6 +71,9 @@ pub struct JumpImpulse(pub Scalar);
 /// the character will slide down.
 #[derive(Component)]
 pub struct MaxSlopeAngle(Scalar);
+
+#[derive(Component, Debug, Reflect)]
+pub struct Health(pub usize);
 
 /// A bundle that contains the components needed for a basic
 /// kinematic character controller.
@@ -262,7 +267,7 @@ fn movement_2(
     for (movement_acceleration, mut linear_velocity, move_intent) in &mut controllers {
         //linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
         //linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
-        debug!("velocity: {:?}", linear_velocity.length());
+        //debug!("velocity: {:?}", linear_velocity.length());
 
         // Vector projection of Current velocity onto accelDir.
         let proj_vel = linear_velocity.0.dot(move_intent.0);
@@ -319,5 +324,62 @@ pub fn apply_movement_damping(
         // We could use `LinearDamping`, but we don't want to dampen movement along the Y axis
         linear_velocity.x *= damping_factor.0;
         linear_velocity.z *= damping_factor.0;
+    }
+}
+
+#[derive(Component)]
+pub struct PlayerHealthUi;
+
+pub fn show_player_ui(mut commands: Commands, player_q: Query<&Health, (Added<ControlledPlayer>)>) {
+    if let Ok(player_health) = player_q.get_single() {
+        debug!("spawning player health ui");
+        commands.spawn((
+            Name::new("Player health ui"),
+            Text::new(format!("{}", player_health.0)),
+            PlayerHealthUi,
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(5.0),
+                left: Val::Px(5.0),
+                ..default()
+            },
+            TextFont {
+                font_size: 84.0,
+                ..default()
+            },
+        ));
+    }
+}
+
+#[derive(Default)]
+pub struct PreviousFrameHealth(usize);
+
+pub fn update_player_ui(
+    mut health_ui: Query<&mut Text, With<PlayerHealthUi>>,
+    player_q: Query<Ref<Health>, With<ControlledPlayer>>,
+    mut previous_health: Local<PreviousFrameHealth>,
+) {
+    let Ok(health) = player_q.get_single() else {
+        return;
+    };
+    // since we mutable deref to sync players. Changed<> doesn't really work
+    if health.0 == previous_health.0 {
+        return;
+    } else {
+        previous_health.0 = health.0;
+    }
+    if !health.is_changed() {
+        return;
+    }
+    let Ok(mut txt) = health_ui.get_single_mut() else {
+        return;
+    };
+    txt.0 = format!("{}", health.0);
+    debug!("udpated health ui");
+}
+
+pub fn check_player_death(player_q: Query<&Health, With<ControlledPlayer>>) {
+    if player_q.get_single().is_ok_and(|hp| hp.0 == 0) {
+        todo!("player died");
     }
 }

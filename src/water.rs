@@ -1,8 +1,11 @@
+use std::f32::consts::PI;
+
 use crate::camera::*;
 use crate::consts::*;
 use avian3d::math::Scalar;
 use avian3d::prelude::*;
 use bevy::color::palettes::css::GREEN;
+use bevy::color::palettes::css::ORANGE_RED;
 use bevy::color::palettes::css::PURPLE;
 use bevy::gizmos;
 use bevy::math::NormedVectorSpace;
@@ -11,6 +14,7 @@ use bevy::{
     pbr::{wireframe::Wireframe, NotShadowCaster},
     prelude::*,
 };
+use bevy_renet::renet::RenetServer;
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
@@ -42,6 +46,20 @@ fn water_setup(
         Collider::cylinder(300.0, 0.1),
         Mesh3d(meshes.add(Cylinder::new(300.0, 0.1))),
         MeshMaterial3d(materials.add(Color::WHITE)),
+    ));
+
+    commands.spawn((
+        Name::new("Surf Cube"),
+        RigidBody::Static,
+        Collider::cuboid(6.0, 6.0, 42.0),
+        Mesh3d(meshes.add(Cuboid::from_size(Vec3::new(6.0, 6.0, 42.0)))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(154, 144, 255))),
+        Transform::from_xyz(20.0, 0.6, 0.0).with_rotation(Quat::from_euler(
+            EulerRot::XYZ,
+            0.,
+            0.3,
+            -0.5,
+        )),
     ));
 
     commands.spawn((
@@ -109,6 +127,14 @@ fn water_setup(
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
+
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(14.0, 8.0, 4.0),
     ));
 }
 
@@ -234,19 +260,29 @@ pub struct PreviousImpulses {
 fn handle_rocket_explosion(
     mut explosion: EventReader<RocketExplosion>,
     mut commands: Commands,
-    mut players_q: Query<(&mut LinearVelocity, &Transform), With<PlayerMarker>>,
+    mut players_q: Query<(&mut LinearVelocity, &Transform, &mut Health), With<PlayerMarker>>,
+    server: Option<ResMut<RenetServer>>,
 ) {
     for ev in explosion.read() {
         debug!("explosion at {:?}", ev.pos);
         commands.entity(ev.ent).despawn();
 
-        for (mut player_vel, player_tf) in players_q.iter_mut() {
+        for (mut player_vel, player_tf, mut player_health) in players_q.iter_mut() {
+            debug!("player health {:?}", player_health);
             if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
                 let distance = player_tf.translation - ev.pos;
                 let normalized_impulse = distance.normalize();
 
                 //player_vel.0 += normalized_impulse * ROCKET_EXPLOSION_FORCE * (1.0 / distance.norm_squared());
                 player_vel.0 += normalized_impulse * ROCKET_EXPLOSION_FORCE;
+
+                if server.is_some() {
+                    let damage = (MAX_ROCKET_DAMAGE as f32
+                        * (distance.norm() / ROCKET_EXPLOSION_RADIUS))
+                        as usize;
+                    debug!("Damage computed: {:?}", damage);
+                    player_health.0 = player_health.0.saturating_sub(damage);
+                }
                 debug!(
                     "impulse vector {:?}",
                     normalized_impulse * ROCKET_EXPLOSION_FORCE

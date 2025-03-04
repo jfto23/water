@@ -35,7 +35,7 @@ use crate::{
         ClientButtonState, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement,
         ClientMovement, ControlledPlayer,
     },
-    consts::{ROCKET_SPEED, SHOOT_COOLDOWN},
+    consts::{PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
     input::{InputMap, LookDirection, MovementIntent},
     water::Rocket,
 };
@@ -172,6 +172,7 @@ pub struct NetworkedEntities {
     pub translations: Vec<[f32; 3]>,
     pub rotations: Vec<[f32; 4]>,
     pub velocities: Vec<[f32; 3]>,
+    pub health: Vec<usize>,
 }
 
 #[derive(Debug, Component)]
@@ -242,6 +243,7 @@ fn handle_events_system(
                 commands
                     .entity(player_entity)
                     .insert(LookDirection::default());
+                commands.entity(player_entity).insert(Health(PLAYER_HEALTH));
                 commands
                     .entity(player_entity)
                     .insert(WeaponCooldown(Timer::new(
@@ -531,10 +533,10 @@ fn update_visualizer_system(
 
 fn server_network_sync(
     mut server: ResMut<RenetServer>,
-    query: Query<(Entity, &Transform, &LinearVelocity), Or<(With<PlayerMarker>, With<Rocket>)>>,
+    query: Query<(Entity, &Transform, &LinearVelocity, &Health), With<PlayerMarker>>,
 ) {
     let mut networked_entities = NetworkedEntities::default();
-    for (entity, transform, velocity) in query.iter() {
+    for (entity, transform, velocity, health) in query.iter() {
         networked_entities.entities.push(entity);
         networked_entities
             .translations
@@ -543,6 +545,7 @@ fn server_network_sync(
             .rotations
             .push(transform.rotation.to_array());
         networked_entities.velocities.push(velocity.to_array());
+        networked_entities.health.push(health.0);
     }
 
     let sync_message = bincode::serialize(&networked_entities).unwrap();

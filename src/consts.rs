@@ -10,5 +10,9 @@ pub const SHOOT_COOLDOWN: f32 = 0.5;
 pub const ROCKET_SPEED: f32 = 16.0;
 pub const ROCKET_EXPLOSION_RADIUS: f32 = 4.0;
 pub const ROCKET_EXPLOSION_FORCE: f32 = 20.0;
+pub const MAX_ROCKET_DAMAGE: usize = 50;
 
+// used for air strafing calculations. Not the actual max air speed
 pub const PSEUDO_MAX_AIR_SPEED: f32 = 7.0;
+
+pub const PLAYER_HEALTH: usize = 128;

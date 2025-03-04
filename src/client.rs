@@ -5,11 +5,11 @@ use std::{
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
-    character::{CharacterControllerBundle, PlayerAction},
-    consts::ROCKET_SPEED,
+    character::{CharacterControllerBundle, Health, PlayerAction},
+    consts::{PLAYER_HEALTH, ROCKET_SPEED},
     input::{InputMap, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
-    water::Rocket,
+    water::{Rocket, RocketExplosion},
 };
 use avian3d::{
     math::Scalar,
@@ -213,7 +213,7 @@ fn receive_message_system(
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
     client_id: Res<CurrentClientId>,
-    mut players_q: Query<(&mut Transform, &mut LinearVelocity), With<PlayerMarker>>,
+    mut players_q: Query<(&mut Transform, &mut LinearVelocity, &mut Health), With<PlayerMarker>>,
 ) {
     while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
@@ -248,6 +248,7 @@ fn receive_message_system(
                 commands
                     .entity(client_entity)
                     .insert(LookDirection::default());
+                commands.entity(client_entity).insert(Health(PLAYER_HEALTH));
                 if client_id.0 == id {
                     debug!("spawning world camera and view model camera");
                     commands.entity(client_entity).insert(ControlledPlayer);
@@ -356,13 +357,16 @@ fn receive_message_system(
                 );
                  */
 
-                let Ok((mut player_tf, mut player_velocity)) = players_q.get_mut(*entity) else {
+                let Ok((mut player_tf, mut player_velocity, mut player_health)) =
+                    players_q.get_mut(*entity)
+                else {
                     continue;
                 };
 
                 player_tf.translation = translation;
                 //player_tf.rotation = rotation;
                 *player_velocity = velocity;
+                player_health.0 = networked_entities.health[i];
 
                 //commands.entity(*entity).insert(transform);
             }
