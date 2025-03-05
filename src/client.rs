@@ -5,11 +5,11 @@ use std::{
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
-    character::{CharacterControllerBundle, Health, PlayerAction},
+    character::{CharacterControllerBundle, Health },
     consts::{PLAYER_HEALTH, ROCKET_SPEED},
     input::{InputMap, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
-    water::{Rocket, RocketExplosion},
+    water::Rocket,
 };
 use avian3d::{
     math::Scalar,
@@ -25,14 +25,13 @@ use bevy::{
 use bevy_egui::EguiContexts;
 use bevy_renet::{
     netcode::{
-        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport, NetcodeServerPlugin,
-        NetcodeServerTransport, ServerAuthentication, ServerConfig,
+        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport,
     },
     renet::{
-        ChannelConfig, ClientId, ConnectionConfig, DefaultChannel, RenetClient, RenetServer,
-        SendType, ServerEvent,
+        ChannelConfig, ClientId,  RenetClient, 
+        SendType, 
     },
-    RenetClientPlugin, RenetServerPlugin,
+    RenetClientPlugin, 
 };
 use serde::{Deserialize, Serialize};
 
@@ -71,7 +70,7 @@ impl Plugin for ClientPlugin {
         let current_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
-        let mut transport =
+        let transport =
             NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
 
         app.insert_resource(transport);
@@ -341,7 +340,7 @@ fn receive_message_system(
             ServerMessages::PlayerDeath { server_ent, id } => {
                 let client_ent = network_mapping.0.get(&server_ent);
                 if let Some(client_ent) = client_ent {
-                    if let Some(mut commands) = commands.get_entity(*client_ent) {
+                    if let Some(commands) = commands.get_entity(*client_ent) {
                         debug!("received player death, despawning");
                         commands.despawn_recursive();
                     }
@@ -356,12 +355,7 @@ fn receive_message_system(
         for i in 0..networked_entities.entities.len() {
             if let Some(entity) = network_mapping.0.get(&networked_entities.entities[i]) {
                 let translation = networked_entities.translations[i].into();
-                let rotation = Quat::from_array(networked_entities.rotations[i]);
-                let transform = Transform {
-                    translation,
-                    rotation,
-                    ..Default::default()
-                };
+                //let rotation = Quat::from_array(networked_entities.rotations[i]);
                 let velocity = LinearVelocity(networked_entities.velocities[i].into());
                 /*
                 debug!(

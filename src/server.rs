@@ -9,7 +9,6 @@ use avian3d::{
 use bevy_egui::EguiContexts;
 use serde::{Deserialize, Serialize};
 use std::{
-    f32::consts::FRAC_PI_2,
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
@@ -17,7 +16,7 @@ use std::{
 use bevy::{
     pbr::NotShadowCaster,
     prelude::*,
-    time::common_conditions::{on_real_timer, on_timer},
+    time::common_conditions::on_timer,
 };
 use bevy_renet::{
     netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig},
@@ -33,13 +32,12 @@ use crate::{
     character::*,
     client::{
         ClientButtonState, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement,
-        ClientMovement, ControlledPlayer,
+        ClientMovement ,
     },
     consts::{PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
     input::{InputMap, LookDirection, MovementIntent},
     water::Rocket,
 };
-use avian3d::math::AdjustPrecision;
 
 use crate::network_visualizer::visualizer::RenetServerVisualizer;
 
@@ -311,7 +309,6 @@ fn update_client_input_state(
     mut movement_event_reader: EventReader<ClientMovement>,
     mut controllers: Query<(Entity, &mut InputMap), With<PlayerMarker>>,
     server_lobby: Res<ServerLobby>,
-    time: Res<Time>,
 ) {
     for ev in movement_event_reader.read() {
         debug!("processing client movement event");
@@ -575,7 +572,6 @@ pub fn check_player_death(
     player_q: Query<(Entity, &Player, &Health), With<PlayerMarker>>,
     mut server: ResMut<RenetServer>,
     mut commands: Commands,
-    server_lobby: ResMut<ServerLobby>,
 ) {
     for (player_ent, player_id, health) in player_q.iter() {
         if health.0 == 0 {
@@ -601,7 +597,6 @@ pub fn respawn_player(
     time_fixed: Res<Time<Fixed>>,
     mut commands: Commands,
     mut server: ResMut<RenetServer>,
-    mut players: Query<(Entity, &Player, &Transform, &mut LookDirection)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {

@@ -1,17 +1,14 @@
-use std::f32::consts::PI;
 
 use crate::camera::*;
 use crate::consts::*;
 use avian3d::math::Scalar;
 use avian3d::prelude::*;
 use bevy::color::palettes::css::GREEN;
-use bevy::color::palettes::css::ORANGE_RED;
 use bevy::color::palettes::css::PURPLE;
-use bevy::gizmos;
 use bevy::math::NormedVectorSpace;
 use bevy::{
     color::palettes::css::WHITE,
-    pbr::{wireframe::Wireframe, NotShadowCaster},
+    pbr::NotShadowCaster,
     prelude::*,
 };
 use bevy_renet::renet::RenetServer;
@@ -31,7 +28,7 @@ impl Plugin for WaterPlugin {
                 FixedUpdate,
                 (handle_rocket_collision, handle_rocket_explosion).chain(),
             )
-            .add_systems(Update, (debug_rocket_explosion))
+            .add_systems(Update, debug_rocket_explosion)
             .add_event::<RocketExplosion>();
     }
 }
@@ -224,7 +221,6 @@ pub struct RocketExplosion {
 
 fn handle_rocket_collision(
     collisions: Res<Collisions>,
-    bodies: Query<&RigidBody>,
     rockets: Query<(Entity, &Transform), With<Rocket>>,
     collider_parents: Query<&ColliderParent, Without<Sensor>>,
     mut explosion: EventWriter<RocketExplosion>,
@@ -302,7 +298,7 @@ fn debug_rocket_explosion(
     mut gizmos: Gizmos,
     mut previous_explosions: Local<PreviousExplosions>,
     mut previous_impulses: Local<PreviousImpulses>,
-    mut players_q: Query<(&mut LinearVelocity, &Transform), With<PlayerMarker>>,
+    mut players_q: Query< &Transform, With<PlayerMarker>>,
 ) {
     previous_explosions.explosions.iter().for_each(|pos| {
         gizmos.sphere(*pos, ROCKET_EXPLOSION_RADIUS, PURPLE);
@@ -320,7 +316,7 @@ fn debug_rocket_explosion(
         debug!("explosion at {:?}", ev.pos);
         previous_explosions.explosions.push(ev.pos);
 
-        for (mut player_vel, player_tf) in players_q.iter_mut() {
+        for player_tf in players_q.iter_mut() {
             if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
                 previous_impulses.start.push(ev.pos);
                 previous_impulses.end.push(player_tf.translation);

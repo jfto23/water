@@ -3,10 +3,6 @@ use bevy::color::palettes::css::GREEN;
 use bevy::render::RenderPlugin;
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::WindowResolution};
-use bevy_renet::{
-    renet::{ClientId, RenetServer, ServerEvent},
-    RenetServerPlugin,
-};
 
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::{Level, LogPlugin};
@@ -15,8 +11,6 @@ use bevy::prelude::Window;
 use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
 use bevy_egui::EguiContext;
 use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::prelude::*;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use client::ClientPlugin;
 use rand::rngs::StdRng;
 use rand::Rng;

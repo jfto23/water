@@ -1,6 +1,5 @@
 pub struct CameraPlugin;
 
-use bevy::time::common_conditions::on_timer;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 use bevy_renet::renet::RenetClient;
@@ -12,11 +11,10 @@ use crate::client::{
 use crate::input::LookDirection;
 use crate::AppState;
 use std::f32::consts::FRAC_PI_2;
-use std::time::Duration;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (cursor_grab));
+        app.add_systems(Startup, cursor_grab);
         app.add_systems(Update, (input, toggle_cursor_grab));
         app.add_systems(
             Update,
@@ -54,11 +52,9 @@ impl Default for CameraSensitivity {
     }
 }
 
-pub const CAMERA_SPEED: f32 = 10.;
 
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
     //mut camera_q: Query<&mut Transform, With<MyCamera>>,
     mut app_state: ResMut<NextState<AppState>>,
     current_app_state: Res<State<AppState>>,
@@ -96,9 +92,9 @@ fn input(
 fn camera_look_around(
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
     player_q: Query<(&Transform, &CameraSensitivity), With<ControlledPlayer>>,
-    mut camera_q: Query<(&mut Transform), (With<WorldCamera>, Without<ControlledPlayer>)>,
+    mut camera_q: Query<&mut Transform, (With<WorldCamera>, Without<ControlledPlayer>)>,
     mut movement_action: EventWriter<PlayerAction>,
-    mut client: Option<ResMut<RenetClient>>,
+    client: Option<ResMut<RenetClient>>,
     client_id: Option<Res<CurrentClientId>>,
 ) {
     let Some(mut client) = client else {
@@ -110,7 +106,7 @@ fn camera_look_around(
     let Ok((transform, camera_sensitivity)) = player_q.get_single() else {
         return;
     };
-    let Ok((mut camera_tf)) = camera_q.get_single_mut() else {
+    let Ok(mut camera_tf) = camera_q.get_single_mut() else {
         return;
     };
     let delta = accumulated_mouse_motion.delta;
@@ -146,7 +142,7 @@ fn camera_look_around(
 
 fn sync_look_direction(
     mut look_direction_q: Query<&mut LookDirection, With<ControlledPlayer>>,
-    mut camera_q: Query<(&GlobalTransform), With<WorldCamera>>,
+    camera_q: Query<&GlobalTransform, With<WorldCamera>>,
 ) {
     let Ok(mut look_dir) = look_direction_q.get_single_mut() else {
         return;
@@ -161,7 +157,7 @@ fn sync_look_direction(
 
 fn send_look_direction(
     look_direction_q: Query<&LookDirection, With<ControlledPlayer>>,
-    mut client: Option<ResMut<RenetClient>>,
+    client: Option<ResMut<RenetClient>>,
     client_id: Option<Res<CurrentClientId>>,
 ) {
     let Some(mut client) = client else {

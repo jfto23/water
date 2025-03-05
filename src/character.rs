@@ -1,27 +1,21 @@
-use std::time::Duration;
 
 use avian3d::{math::*, prelude::*};
 use bevy::input::mouse::*;
-use bevy::math::NormedVectorSpace;
-use bevy::time::common_conditions::on_timer;
 use bevy::{ecs::query::Has, prelude::*};
-use bevy_renet::renet::RenetClient;
 use serde::{Deserialize, Serialize};
 
-use crate::camera::PlayerMarker;
 use crate::client::{
-    ClientButtonState, ClientChannel, ClientInput, ClientMovement, ControlledPlayer,
-    CurrentClientId,
+     ClientMovement, ControlledPlayer,
 };
 use crate::consts::PSEUDO_MAX_AIR_SPEED;
-use crate::input::{InputMap, MovementIntent};
+use crate::input:: MovementIntent;
 
 pub struct CharacterControllerPlugin;
 
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<PlayerAction>()
-            .add_systems(Startup, (show_player_ui))
+            .add_systems(Startup, show_player_ui)
             .add_systems(Update, (mouse_input, update_player_ui))
             .add_systems(
                 FixedUpdate,
@@ -202,26 +196,21 @@ fn movement(
     mut movement_event_reader: EventReader<PlayerAction>,
     mut controllers: Query<
         (
-            &MovementAcceleration,
             &JumpImpulse,
             &mut LinearVelocity,
             Has<Grounded>,
             &mut Transform,
-            &MovementIntent,
         ),
         With<ControlledPlayer>,
     >,
 ) {
-    let delta_time = time_fixed.delta_secs();
 
     for event in movement_event_reader.read() {
         for (
-            movement_acceleration,
             jump_impulse,
             mut linear_velocity,
             is_grounded,
             mut player_tf,
-            move_intent,
         ) in &mut controllers
         {
             match event {
@@ -374,10 +363,4 @@ pub fn update_player_ui(
         return;
     };
     txt.0 = format!("{}", health.0);
-}
-
-pub fn check_player_death(player_q: Query<&Health, With<ControlledPlayer>>) {
-    if player_q.get_single().is_ok_and(|hp| hp.0 == 0) {
-        todo!("player died");
-    }
 }

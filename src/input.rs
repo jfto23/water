@@ -2,7 +2,6 @@ use crate::character::*;
 use crate::client::ClientChannel;
 use crate::client::*;
 use avian3d::math::{Scalar, Vector3};
-use avian3d::prelude::*;
 use bevy::{prelude::*, utils::HashMap};
 use bevy_renet::renet::RenetClient;
 use serde::{Deserialize, Serialize};
@@ -35,7 +34,7 @@ fn update_input_map(
     mouse_input: Res<ButtonInput<MouseButton>>,
     mut input_q: Query<&mut InputMap, With<ControlledPlayer>>,
 ) {
-    let Ok((mut input_map)) = input_q.get_single_mut() else {
+    let Ok(mut input_map) = input_q.get_single_mut() else {
         return;
     };
     let forward = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
@@ -58,7 +57,6 @@ fn read_input_map(
     mut movement_event_writer: EventWriter<PlayerAction>,
     mut player_q: Query<
         (
-            &Transform,
             &GlobalTransform,
             &mut InputMap,
             &mut MovementIntent,
@@ -66,7 +64,7 @@ fn read_input_map(
         With<ControlledPlayer>,
     >,
 ) {
-    let Ok((player_tf, global_player_tf, mut input_map, mut move_intent)) =
+    let Ok(( global_player_tf, input_map, mut move_intent)) =
         player_q.get_single_mut()
     else {
         return;
@@ -133,10 +131,8 @@ fn send_input_map(
 */
 
 fn keyboard_network_input(
-    mut movement_event_writer: EventWriter<PlayerAction>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    player_q: Query<(&Transform, &GlobalTransform), With<ControlledPlayer>>,
-    mut client: Option<ResMut<RenetClient>>,
+    client: Option<ResMut<RenetClient>>,
     client_id: Option<Res<CurrentClientId>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
 ) {
