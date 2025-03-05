@@ -21,7 +21,8 @@ pub struct CharacterControllerPlugin;
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<PlayerAction>()
-            .add_systems(Update, (mouse_input, show_player_ui, update_player_ui))
+            .add_systems(Startup, (show_player_ui))
+            .add_systems(Update, (mouse_input, update_player_ui))
             .add_systems(
                 FixedUpdate,
                 (
@@ -330,25 +331,23 @@ pub fn apply_movement_damping(
 #[derive(Component)]
 pub struct PlayerHealthUi;
 
-pub fn show_player_ui(mut commands: Commands, player_q: Query<&Health, (Added<ControlledPlayer>)>) {
-    if let Ok(player_health) = player_q.get_single() {
-        debug!("spawning player health ui");
-        commands.spawn((
-            Name::new("Player health ui"),
-            Text::new(format!("{}", player_health.0)),
-            PlayerHealthUi,
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(5.0),
-                left: Val::Px(5.0),
-                ..default()
-            },
-            TextFont {
-                font_size: 84.0,
-                ..default()
-            },
-        ));
-    }
+pub fn show_player_ui(mut commands: Commands) {
+    debug!("spawning player health ui");
+    commands.spawn((
+        Name::new("Player health ui"),
+        Text::new(""),
+        PlayerHealthUi,
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(5.0),
+            left: Val::Px(5.0),
+            ..default()
+        },
+        TextFont {
+            font_size: 84.0,
+            ..default()
+        },
+    ));
 }
 
 #[derive(Default)]
@@ -375,7 +374,6 @@ pub fn update_player_ui(
         return;
     };
     txt.0 = format!("{}", health.0);
-    debug!("udpated health ui");
 }
 
 pub fn check_player_death(player_q: Query<&Health, With<ControlledPlayer>>) {

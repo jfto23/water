@@ -35,7 +35,7 @@ use crate::{
         ClientButtonState, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement,
         ClientMovement, ControlledPlayer,
     },
-    consts::{PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
+    consts::{PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
     input::{InputMap, LookDirection, MovementIntent},
     water::Rocket,
 };
@@ -72,6 +72,7 @@ impl Plugin for ServerPlugin {
         app.insert_resource(RenetServerVisualizer::<200>::default());
 
         app.add_systems(FixedUpdate, handle_events_system);
+        app.add_systems(FixedUpdate, (check_player_death, respawn_player));
         app.add_systems(
             FixedUpdate,
             (
@@ -163,6 +164,10 @@ pub enum ServerMessages {
     BulletCreate {
         translation: [f32; 3],
         dir: [f32; 3], // normalized
+    },
+    PlayerDeath {
+        server_ent: Entity,
+        id: u64,
     },
 }
 
@@ -558,4 +563,109 @@ pub fn connection_config() -> ConnectionConfig {
         client_channels_config: ClientChannel::channels_config(),
         server_channels_config: ServerChannel::channels_config(),
     }
+}
+
+#[derive(Component)]
+pub struct DeathTimer {
+    pub timer: Timer,
+    pub id: u64,
+}
+
+pub fn check_player_death(
+    player_q: Query<(Entity, &Player, &Health), With<PlayerMarker>>,
+    mut server: ResMut<RenetServer>,
+    mut commands: Commands,
+    server_lobby: ResMut<ServerLobby>,
+) {
+    for (player_ent, player_id, health) in player_q.iter() {
+        if health.0 == 0 {
+            commands.entity(player_ent).despawn_recursive();
+            let message = bincode::serialize(&ServerMessages::PlayerDeath {
+                server_ent: player_ent,
+                id: player_id.id,
+            })
+            .unwrap();
+            server.broadcast_message(ServerChannel::ServerMessages, message);
+
+            commands.spawn(DeathTimer {
+                timer: Timer::new(Duration::from_secs_f32(PLAYER_DEATH_TIMER), TimerMode::Once),
+                id: player_id.id,
+            });
+        }
+    }
+}
+
+pub fn respawn_player(
+    mut death_timers: Query<(Entity, &mut DeathTimer)>,
+    mut server_lobby: ResMut<ServerLobby>,
+    time_fixed: Res<Time<Fixed>>,
+    mut commands: Commands,
+    mut server: ResMut<RenetServer>,
+    mut players: Query<(Entity, &Player, &Transform, &mut LookDirection)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for (ent, mut death_timer) in death_timers.iter_mut() {
+        death_timer.timer.tick(time_fixed.delta());
+
+        if death_timer.timer.just_finished() {
+            commands.entity(ent).despawn();
+
+            let transform = Transform::from_xyz(0.0, 1.5, 0.0);
+            let player_entity =
+                build_player_ent(&mut commands, &mut meshes, &mut materials, death_timer.id);
+
+            commands
+                .entity(player_entity)
+                .insert(LookDirection::default());
+            commands.entity(player_entity).insert(Health(PLAYER_HEALTH));
+            commands
+                .entity(player_entity)
+                .insert(WeaponCooldown(Timer::new(
+                    Duration::from_secs_f32(SHOOT_COOLDOWN),
+                    TimerMode::Once,
+                )));
+            server_lobby.players.insert(death_timer.id, player_entity);
+            let translation: [f32; 3] = transform.translation.into();
+            let message = bincode::serialize(&ServerMessages::PlayerCreate {
+                id: death_timer.id,
+                entity: player_entity,
+                translation,
+            })
+            .unwrap();
+            server.broadcast_message(ServerChannel::ServerMessages, message);
+        }
+    }
+}
+
+fn build_player_ent(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    client_id: u64,
+) -> Entity {
+    commands
+        .spawn((
+            Name::new("Player entity"),
+            Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
+            MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+            NotShadowCaster,
+            Transform::from_xyz(0.0, 1.5, 0.0),
+            CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0)).with_movement(
+                50.0,
+                0.9,
+                7.0,
+                (20.0 as Scalar).to_radians(),
+            ),
+            Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
+            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
+            GravityScale(2.0),
+            PlayerMarker,
+            MovementIntent::default(),
+            TransformInterpolation,
+            CameraSensitivity::default(),
+            InputMap::default(),
+            Player { id: client_id },
+        ))
+        .id()
 }

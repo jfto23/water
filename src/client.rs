@@ -213,7 +213,10 @@ fn receive_message_system(
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
     client_id: Res<CurrentClientId>,
-    mut players_q: Query<(&mut Transform, &mut LinearVelocity, &mut Health), With<PlayerMarker>>,
+    mut players_q: Query<
+        (&mut Transform, &mut LinearVelocity, &mut Health, Entity),
+        With<PlayerMarker>,
+    >,
 ) {
     while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
@@ -223,7 +226,7 @@ fn receive_message_system(
                 translation,
                 entity,
             } => {
-                debug!("Player {} connected.", id);
+                debug!("Spawning player entity for  client:{}", id);
                 let client_entity = commands
                     .spawn((
                         Name::new("Player entity"),
@@ -334,6 +337,16 @@ fn receive_message_system(
                     Transform::from_translation(translation.into()),
                 ));
             }
+
+            ServerMessages::PlayerDeath { server_ent, id } => {
+                let client_ent = network_mapping.0.get(&server_ent);
+                if let Some(client_ent) = client_ent {
+                    if let Some(mut commands) = commands.get_entity(*client_ent) {
+                        debug!("received player death, despawning");
+                        commands.despawn_recursive();
+                    }
+                }
+            }
         }
     }
 
@@ -357,7 +370,7 @@ fn receive_message_system(
                 );
                  */
 
-                let Ok((mut player_tf, mut player_velocity, mut player_health)) =
+                let Ok((mut player_tf, mut player_velocity, mut player_health, _)) =
                     players_q.get_mut(*entity)
                 else {
                     continue;

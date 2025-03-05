@@ -23,6 +23,7 @@ use rand::Rng;
 use rand::SeedableRng;
 use server::ServerPlugin;
 
+mod bimap;
 mod camera;
 mod character;
 mod client;
