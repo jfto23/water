@@ -52,7 +52,6 @@ impl Default for CameraSensitivity {
     }
 }
 
-
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
     //mut camera_q: Query<&mut Transform, With<MyCamera>>,

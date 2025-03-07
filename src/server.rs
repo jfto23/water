@@ -7,17 +7,14 @@ use avian3d::{
     },
 };
 use bevy_egui::EguiContexts;
+use leafwing_input_manager::prelude::ActionState;
 use serde::{Deserialize, Serialize};
 use std::{
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
 
-use bevy::{
-    pbr::NotShadowCaster,
-    prelude::*,
-    time::common_conditions::on_timer,
-};
+use bevy::{pbr::NotShadowCaster, prelude::*, time::common_conditions::on_timer};
 use bevy_renet::{
     netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig},
     renet::{
@@ -31,13 +28,14 @@ use crate::{
     camera::{spawn_camera, CameraSensitivity, PlayerMarker},
     character::*,
     client::{
-        ClientButtonState, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement,
-        ClientMovement ,
+        ClientAction, ClientButtonState, ClientChannel, ClientInput, ClientLookDirection,
+        ClientMouseMovement,
     },
     consts::{PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
-    input::{InputMap, LookDirection, MovementIntent},
+    input::{build_input_map, Action, LookDirection, MovementIntent},
     water::Rocket,
 };
+use leafwing_input_manager::prelude::*;
 
 use crate::network_visualizer::visualizer::RenetServerVisualizer;
 
@@ -66,6 +64,8 @@ impl Plugin for ServerPlugin {
         let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
         app.insert_resource(transport);
 
+        app.add_plugins(InputManagerPlugin::<Action>::server());
+
         app.add_systems(Startup, spawn_camera);
         app.insert_resource(RenetServerVisualizer::<200>::default());
 
@@ -90,10 +90,8 @@ impl Plugin for ServerPlugin {
 
         app.add_systems(Update, update_visualizer_system);
 
-        app.add_systems(
-            FixedUpdate,
-            (update_client_input_state, read_client_input_state),
-        );
+        app.add_systems(PreUpdate, update_client_input_state);
+        app.add_systems(FixedUpdate, read_client_input_state);
 
         app.add_event::<ServerPlayerAction>();
     }
@@ -199,7 +197,7 @@ fn handle_events_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut movement_event_writer: EventWriter<ClientMovement>,
+    mut movement_event_writer: EventWriter<ClientAction<Action>>,
     mut mouse_event_writer: EventWriter<ClientMouseMovement>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
 ) {
@@ -238,7 +236,7 @@ fn handle_events_system(
                         MovementIntent::default(),
                         TransformInterpolation,
                         CameraSensitivity::default(),
-                        InputMap::default(),
+                        InputManagerBundle::with_map(build_input_map()),
                         Player { id: *client_id },
                     ))
                     .id();
@@ -279,7 +277,7 @@ fn handle_events_system(
 
     for client_id in server.clients_id() {
         while let Some(message) = server.receive_message(client_id, ClientChannel::Input) {
-            let client_move: ClientMovement = bincode::deserialize(&message).unwrap();
+            let client_move: ClientAction<Action> = bincode::deserialize(&message).unwrap();
             debug!("received ClientMovement {:?}", client_move);
             if let Some(player_entity) = lobby.players.get(&client_move.client_id) {
                 movement_event_writer.send(client_move);
@@ -306,23 +304,17 @@ fn handle_events_system(
 }
 
 fn update_client_input_state(
-    mut movement_event_reader: EventReader<ClientMovement>,
-    mut controllers: Query<(Entity, &mut InputMap), With<PlayerMarker>>,
+    mut movement_event_reader: EventReader<ClientAction<Action>>,
+    //mut controllers: Query<(Entity, &mut ActionState<Action>), With<PlayerMarker>>,
+    mut action_state_query: Query<&mut ActionState<Action>, With<PlayerMarker>>,
     server_lobby: Res<ServerLobby>,
 ) {
     for ev in movement_event_reader.read() {
         debug!("processing client movement event");
-        for (player_ent, mut input_map) in &mut controllers {
-            if server_lobby
-                .players
-                .get(&ev.client_id)
-                .is_some_and(|inner| *inner == player_ent)
-            {
-                debug!("Modifying input map for {:?}", player_ent);
-                match ev.button_state {
-                    ClientButtonState::Pressed(input) => input_map.0.insert(input, true),
-                    ClientButtonState::Released(input) => input_map.0.insert(input, false),
-                };
+
+        if let Some(player_ent) = server_lobby.players.get(&ev.client_id) {
+            if let Ok((mut action_state)) = action_state_query.get_mut(*player_ent) {
+                action_state.apply_diff(&ev.action_diff);
             }
         }
     }
@@ -331,7 +323,7 @@ fn update_client_input_state(
 // reads all clients input maps and sends MovementAction event
 fn read_client_input_state(
     mut clients_q: Query<(
-        &InputMap,
+        &ActionState<Action>,
         &Transform,
         &GlobalTransform,
         Entity,
@@ -339,43 +331,27 @@ fn read_client_input_state(
     )>,
     mut player_action: EventWriter<ServerPlayerAction>,
 ) {
-    for (input_map, client_tf, client_global_tf, ent, mut move_intent) in clients_q.iter_mut() {
-        let mut x_axis: i8 = 0;
-        let mut z_axis: i8 = 0;
+    for (action_state, client_tf, client_global_tf, ent, mut move_intent) in clients_q.iter_mut() {
+        if action_state.pressed(&Action::Shoot) {
+            player_action.send(ServerPlayerAction {
+                action: PlayerAction::Shoot,
+                ent,
+            });
+        }
+        if action_state.pressed(&Action::Jump) {
+            player_action.send(ServerPlayerAction {
+                action: PlayerAction::Jump,
+                ent,
+            });
+        }
 
-        input_map.0.iter().for_each(|(input, pressed)| {
-            if !*pressed {
-                return;
-            }
-            match *input {
-                ClientInput::Forward => {
-                    z_axis -= 1;
-                }
-                ClientInput::Back => {
-                    z_axis += 1;
-                }
-                ClientInput::Left => {
-                    x_axis -= 1;
-                }
-                ClientInput::Right => {
-                    x_axis += 1;
-                }
-                ClientInput::Jump => {
-                    debug!("player is jumping");
-                    player_action.send(ServerPlayerAction {
-                        action: PlayerAction::Jump,
-                        ent,
-                    });
-                }
-                ClientInput::Shoot => {
-                    debug!("player is shooting");
-                    player_action.send(ServerPlayerAction {
-                        action: PlayerAction::Shoot,
-                        ent,
-                    });
-                }
-            }
-        });
+        let forward = action_state.pressed(&Action::Forward);
+        let left = action_state.pressed(&Action::Left);
+        let back = action_state.pressed(&Action::Back);
+        let right = action_state.pressed(&Action::Right);
+
+        let x_axis = right as i8 - left as i8;
+        let z_axis = back as i8 - forward as i8;
 
         let local_direction =
             Vector3::new(x_axis as Scalar, 0.0 as Scalar, z_axis as Scalar).clamp_length_max(1.0);
@@ -387,10 +363,6 @@ fn read_client_input_state(
 
         if local_direction != Vector3::ZERO {
             move_intent.0 = global_direction;
-            player_action.send(ServerPlayerAction {
-                action: PlayerAction::Move(global_direction.to_array()),
-                ent,
-            });
         } else {
             move_intent.0 = Vector3::ZERO;
         }
@@ -434,25 +406,6 @@ fn handle_server_player_action(
             continue;
         };
         match event.action {
-            PlayerAction::Move(direction) => {
-                /*
-                linear_velocity.x += direction[0] * movement_acceleration.0 * delta_time;
-                linear_velocity.z += direction[2] * movement_acceleration.0 * delta_time;
-                debug!("delta_time: {:?}", delta_time);
-
-
-                let mut air_acc = air_accelerate(*direction, &linear_velocity);
-
-                let mut accel_speed = 100. * delta_time;
-                if accel_speed > air_acc {
-                    accel_speed = air_acc;
-                }
-                debug!("accell_speed: {:?}", accel_speed);
-
-                linear_velocity.x += accel_speed;
-                linear_velocity.z += accel_speed;
-                 */
-            }
             PlayerAction::Jump => {
                 if is_grounded {
                     linear_velocity.y = jump_impulse.0;
@@ -659,7 +612,7 @@ fn build_player_ent(
             MovementIntent::default(),
             TransformInterpolation,
             CameraSensitivity::default(),
-            InputMap::default(),
+            InputManagerBundle::with_map(build_input_map()),
             Player { id: client_id },
         ))
         .id()

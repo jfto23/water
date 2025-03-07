@@ -12,6 +12,8 @@ use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
 use bevy_egui::EguiContext;
 use bevy_egui::EguiPlugin;
 use client::ClientPlugin;
+use input::Action;
+use leafwing_input_manager::prelude::*;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
@@ -62,7 +64,7 @@ fn main() {
             })
             .set(LogPlugin {
                 level: Level::DEBUG,
-                filter: "wgpu=error,bevy_render=info,bevy_ecs=trace,naga=info".to_string(),
+                filter: "wgpu=error,bevy_render=info,bevy_ecs=trace,naga=info,leafwing_input_manager=info".to_string(),
                 custom_layer: |_| None,
             })
             .set(RenderPlugin {

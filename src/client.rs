@@ -5,9 +5,9 @@ use std::{
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
-    character::{CharacterControllerBundle, Health },
+    character::{CharacterControllerBundle, Health},
     consts::{PLAYER_HEALTH, ROCKET_SPEED},
-    input::{InputMap, LookDirection, MovementIntent},
+    input::{build_input_map, Action, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
     water::Rocket,
 };
@@ -24,14 +24,9 @@ use bevy::{
 };
 use bevy_egui::EguiContexts;
 use bevy_renet::{
-    netcode::{
-        ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport,
-    },
-    renet::{
-        ChannelConfig, ClientId,  RenetClient, 
-        SendType, 
-    },
-    RenetClientPlugin, 
+    netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport},
+    renet::{ChannelConfig, ClientId, RenetClient, SendType},
+    RenetClientPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +37,9 @@ use crate::{
 };
 
 use crate::network_visualizer::visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
+use leafwing_input_manager::action_diff::{ActionDiff, ActionDiffEvent};
+use leafwing_input_manager::prelude::*;
+use leafwing_input_manager::systems::generate_action_diffs;
 
 pub struct ClientPlugin;
 
@@ -70,8 +68,9 @@ impl Plugin for ClientPlugin {
         let current_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
-        let transport =
-            NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+        let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+
+        app.add_plugins(InputManagerPlugin::<Action>::default());
 
         app.insert_resource(transport);
         app.insert_resource(CurrentClientId(client_id));
@@ -83,8 +82,11 @@ impl Plugin for ClientPlugin {
             RenetVisualizerStyle::default(),
         ));
 
+        app.add_systems(PostUpdate, generate_action_diffs::<Action>);
+        app.add_systems(FixedUpdate, send_action_diffs::<Action>);
         app.add_systems(FixedUpdate, (send_message_system, receive_message_system));
         app.add_systems(Update, update_visualizer_system);
+        app.add_event::<ActionDiffEvent<Action>>();
     }
 }
 
@@ -127,8 +129,8 @@ struct PlayerInfo {
 }
 
 #[derive(Event, Clone, Deserialize, Serialize, Debug)]
-pub struct ClientMovement {
-    pub button_state: ClientButtonState,
+pub struct ClientAction<A: Actionlike> {
+    pub action_diff: ActionDiff<A>,
     pub client_id: u64,
 }
 
@@ -242,7 +244,7 @@ fn receive_message_system(
                         MovementIntent::default(),
                         TransformInterpolation,
                         CameraSensitivity::default(),
-                        InputMap::default(),
+                        InputManagerBundle::with_map(build_input_map()),
                         Player { id },
                     ))
                     .id();
@@ -377,6 +379,34 @@ fn receive_message_system(
 
                 //commands.entity(*entity).insert(transform);
             }
+        }
+    }
+}
+
+fn send_action_diffs<A: Actionlike + Serialize>(
+    mut action_state_query: Query<&mut ActionState<A>>,
+    mut action_diff_events: EventReader<ActionDiffEvent<A>>,
+    client: Option<ResMut<RenetClient>>,
+    client_id: Option<Res<CurrentClientId>>,
+) {
+    let Some(mut client) = client else {
+        return;
+    };
+    let Some(client_id) = client_id else {
+        return;
+    };
+    for action_diff_event in action_diff_events.read() {
+        if let Some(owner) = action_diff_event.owner {
+            let mut action_state = action_state_query.get_mut(owner).unwrap();
+            action_diff_event.action_diffs.iter().for_each(|diff| {
+                // @performance should we send entire vec maybe?
+                let input_message = bincode::serialize(&ClientAction {
+                    action_diff: diff.clone(),
+                    client_id: client_id.0.into(),
+                })
+                .unwrap();
+                client.send_message(ClientChannel::Input, input_message);
+            });
         }
     }
 }

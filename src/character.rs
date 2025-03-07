@@ -1,14 +1,12 @@
-
 use avian3d::{math::*, prelude::*};
 use bevy::input::mouse::*;
 use bevy::{ecs::query::Has, prelude::*};
+use leafwing_input_manager::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::client::{
-     ClientMovement, ControlledPlayer,
-};
+use crate::client::{ClientAction, ControlledPlayer};
 use crate::consts::PSEUDO_MAX_AIR_SPEED;
-use crate::input:: MovementIntent;
+use crate::input::{Action, MovementIntent};
 
 pub struct CharacterControllerPlugin;
 
@@ -27,7 +25,7 @@ impl Plugin for CharacterControllerPlugin {
                     //check_player_death,
                 ),
             )
-            .add_event::<ClientMovement>()
+            .add_event::<ClientAction<Action>>()
             .register_type::<Health>();
     }
 }
@@ -35,7 +33,6 @@ impl Plugin for CharacterControllerPlugin {
 /// An event sent for a movement input action.
 #[derive(Event, Clone, Deserialize, Serialize)]
 pub enum PlayerAction {
-    Move([f32; 3]),
     Jump,
     Shoot,
     Rotate([f32; 4]),
@@ -204,35 +201,9 @@ fn movement(
         With<ControlledPlayer>,
     >,
 ) {
-
     for event in movement_event_reader.read() {
-        for (
-            jump_impulse,
-            mut linear_velocity,
-            is_grounded,
-            mut player_tf,
-        ) in &mut controllers
-        {
+        for (jump_impulse, mut linear_velocity, is_grounded, mut player_tf) in &mut controllers {
             match event {
-                PlayerAction::Move(direction) => {
-                    /*
-                    linear_velocity.x += move_intent.0.x * movement_acceleration.0 * delta_time;
-                    linear_velocity.z += move_intent.0.z * movement_acceleration.0 * delta_time;
-                    debug!("delta_time: {:?}", delta_time);
-                    //debug!("linear_velocity: {:?}", linear_velocity);
-
-                    let mut air_acc = air_accelerate(*direction, &linear_velocity);
-
-                    let mut accel_speed = 100. * delta_time;
-                    if accel_speed > air_acc {
-                        accel_speed = air_acc;
-                    }
-                    debug!("accell_speed: {:?}", accel_speed);
-
-                    linear_velocity.x += accel_speed;
-                    linear_velocity.z += accel_speed;
-                     */
-                }
                 PlayerAction::Jump => {
                     if is_grounded {
                         linear_velocity.y = jump_impulse.0;
@@ -273,38 +244,6 @@ fn movement_2(
         linear_velocity.0 += move_intent.0 * accel_vel;
     }
 }
-
-/*
-fn air_movement(
-    mut controllers: Query<
-        (&MovementAcceleration, &mut LinearVelocity, &MovementIntent),
-        Without<Grounded>,
-    >,
-
-    time_fixed: Res<Time<Fixed>>,
-) {
-    let delta_time = time_fixed.delta_secs();
-    for (movement_acceleration, mut linear_velocity, move_intent) in &mut controllers {
-        let proj = linear_velocity.0.project_onto(move_intent.0);
-
-        let is_away = move_intent.0.dot(proj) <= 0.0;
-
-        if proj.norm() < MAX_AIR_SPEED || is_away {
-            let mut vc = move_intent.0 * 10.0;
-
-            if !is_away {
-                vc = vc.clamp_length_max(MAX_AIR_SPEED - proj.norm());
-            } else {
-                vc = vc.clamp_length_max(MAX_AIR_SPEED + proj.norm());
-            }
-
-            linear_velocity.0 += delta_time * vc;
-        }
-    }
-}
-
-
-*/
 
 /// Slows down movement in the XZ plane.
 pub fn apply_movement_damping(

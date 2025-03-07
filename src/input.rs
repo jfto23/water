@@ -4,22 +4,16 @@ use crate::client::*;
 use avian3d::math::{Scalar, Vector3};
 use bevy::{prelude::*, utils::HashMap};
 use bevy_renet::renet::RenetClient;
+use leafwing_input_manager::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (update_input_map, read_input_map, keyboard_network_input).chain(),
-        );
+        app.add_systems(Update, (read_input_map).chain());
     }
 }
-
-// tracks pressed and release events
-#[derive(Component, Default, Debug, Clone, Serialize, Deserialize)]
-pub struct InputMap(pub HashMap<ClientInput, bool>);
 
 // global normalized direction vector of the intent of the player. gets after reading input_map
 #[derive(Component, Default, Debug, Clone)]
@@ -29,51 +23,24 @@ pub struct MovementIntent(pub Vec3);
 #[derive(Component, Default, Debug, Clone)]
 pub struct LookDirection(pub Vec3);
 
-fn update_input_map(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mouse_input: Res<ButtonInput<MouseButton>>,
-    mut input_q: Query<&mut InputMap, With<ControlledPlayer>>,
-) {
-    let Ok(mut input_map) = input_q.get_single_mut() else {
-        return;
-    };
-    let forward = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
-    let back = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
-    let left = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
-    let right = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
-    let jump = keyboard_input.any_pressed([KeyCode::Space]);
-    let shoot = mouse_input.any_pressed([MouseButton::Left]);
-
-    input_map.0.insert(ClientInput::Forward, forward);
-    input_map.0.insert(ClientInput::Back, back);
-    input_map.0.insert(ClientInput::Left, left);
-    input_map.0.insert(ClientInput::Right, right);
-    input_map.0.insert(ClientInput::Jump, jump);
-    input_map.0.insert(ClientInput::Shoot, shoot);
-    //debug!("inputmap: {:?}", input_map);
-}
-
 fn read_input_map(
     mut movement_event_writer: EventWriter<PlayerAction>,
     mut player_q: Query<
-        (
-            &GlobalTransform,
-            &mut InputMap,
-            &mut MovementIntent,
-        ),
+        (&GlobalTransform, &ActionState<Action>, &mut MovementIntent),
         With<ControlledPlayer>,
     >,
 ) {
-    let Ok(( global_player_tf, input_map, mut move_intent)) =
-        player_q.get_single_mut()
-    else {
+    let Ok((global_player_tf, action_state, mut move_intent)) = player_q.get_single_mut() else {
         return;
     };
 
-    let x_axis = *input_map.0.get(&ClientInput::Right).unwrap() as i8
-        - *input_map.0.get(&ClientInput::Left).unwrap() as i8;
-    let z_axis = *input_map.0.get(&ClientInput::Back).unwrap() as i8
-        - *input_map.0.get(&ClientInput::Forward).unwrap() as i8;
+    let forward = action_state.pressed(&Action::Forward);
+    let left = action_state.pressed(&Action::Left);
+    let back = action_state.pressed(&Action::Back);
+    let right = action_state.pressed(&Action::Right);
+
+    let x_axis = right as i8 - left as i8;
+    let z_axis = back as i8 - forward as i8;
     let local_direction =
         Vector3::new(x_axis as Scalar, 0.0 as Scalar, z_axis as Scalar).clamp_length_max(1.0);
 
@@ -96,11 +63,7 @@ fn read_input_map(
         move_intent.0 = Vector3::ZERO;
     }
 
-    if input_map
-        .0
-        .get(&ClientInput::Jump)
-        .is_some_and(|inner| *inner)
-    {
+    if action_state.just_pressed(&Action::Jump) {
         movement_event_writer.send(PlayerAction::Jump);
     }
 }
@@ -130,6 +93,7 @@ fn send_input_map(
 }
 */
 
+/*
 fn keyboard_network_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     client: Option<ResMut<RenetClient>>,
@@ -186,6 +150,7 @@ fn keyboard_network_input(
 
     //https://gamedev.stackexchange.com/questions/74655/what-to-send-to-server-in-real-time-fps-game
 }
+ */
 
 fn generate_client_button_state(
     just_pressed: bool,
@@ -200,4 +165,27 @@ fn generate_client_button_state(
         inputs.push(ClientButtonState::Released(client_input));
     }
     return inputs;
+}
+
+#[derive(Actionlike, PartialEq, Eq, Hash, Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
+pub enum Action {
+    Forward,
+    Left,
+    Back,
+    Right,
+    Shoot,
+    Jump,
+}
+
+pub fn build_input_map() -> InputMap<Action> {
+    let input_map = InputMap::new([
+        (Action::Jump, KeyCode::Space),
+        (Action::Forward, KeyCode::KeyW),
+        (Action::Left, KeyCode::KeyA),
+        (Action::Back, KeyCode::KeyS),
+        (Action::Right, KeyCode::KeyD),
+    ])
+    .with(Action::Shoot, MouseButton::Left);
+
+    return input_map;
 }
