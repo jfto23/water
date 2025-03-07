@@ -7,7 +7,7 @@ pub const VIEW_MODEL_RENDER_LAYER: usize = 1;
 pub const SHOOT_COOLDOWN: f32 = 0.5;
 
 // meters per sec
-pub const ROCKET_SPEED: f32 = 16.0;
+pub const ROCKET_SPEED: f32 = 20.0;
 pub const ROCKET_EXPLOSION_RADIUS: f32 = 4.0;
 pub const ROCKET_EXPLOSION_FORCE: f32 = 20.0;
 pub const MAX_ROCKET_DAMAGE: usize = 50;

@@ -1,3 +1,4 @@
+use std::f32::consts::PI;
 
 use crate::camera::*;
 use crate::consts::*;
@@ -6,11 +7,7 @@ use avian3d::prelude::*;
 use bevy::color::palettes::css::GREEN;
 use bevy::color::palettes::css::PURPLE;
 use bevy::math::NormedVectorSpace;
-use bevy::{
-    color::palettes::css::WHITE,
-    pbr::NotShadowCaster,
-    prelude::*,
-};
+use bevy::{color::palettes::css::WHITE, pbr::NotShadowCaster, prelude::*};
 use bevy_renet::renet::RenetServer;
 
 use crate::{
@@ -36,7 +33,28 @@ fn water_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
+    commands.spawn((
+        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("maps/map_test.glb"))),
+        ColliderConstructorHierarchy::new(ColliderConstructor::TrimeshFromMesh),
+        RigidBody::Static,
+    ));
+
+    commands.spawn((
+        DirectionalLight {
+            illuminance: light_consts::lux::OVERCAST_DAY,
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform {
+            translation: Vec3::new(0.0, 120.0, 0.0),
+            rotation: Quat::from_rotation_x(-PI / 4.),
+            ..default()
+        },
+    ));
+
+    /*
     commands.spawn((
         Name::new("Floor"),
         RigidBody::Static,
@@ -44,7 +62,9 @@ fn water_setup(
         Mesh3d(meshes.add(Cylinder::new(300.0, 0.1))),
         MeshMaterial3d(materials.add(Color::WHITE)),
     ));
+     */
 
+    /*
     commands.spawn((
         Name::new("Surf Cube"),
         RigidBody::Static,
@@ -76,6 +96,8 @@ fn water_setup(
         MeshMaterial3d(materials.add(Color::srgb_u8(154, 144, 255))),
         Transform::from_xyz(4.0, 0.6, 3.0),
     ));
+
+     */
 
     commands.spawn((
         Name::new("Big Cube"),
@@ -125,7 +147,28 @@ fn water_setup(
         },
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(6.0, 10.0, 83.0),
+    ));
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(25.0, -5.0, 25.0),
+    ));
 
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(17.0, -2.0, 75.0),
+    ));
     commands.spawn((
         PointLight {
             shadows_enabled: true,
@@ -277,7 +320,7 @@ fn handle_rocket_explosion(
                         * (distance.norm() / ROCKET_EXPLOSION_RADIUS))
                         as usize;
                     debug!("Damage computed: {:?}", damage);
-                    player_health.0 = player_health.0.saturating_sub(damage);
+                    //player_health.0 = player_health.0.saturating_sub(damage);
                 }
                 debug!(
                     "impulse vector {:?}",
@@ -298,7 +341,7 @@ fn debug_rocket_explosion(
     mut gizmos: Gizmos,
     mut previous_explosions: Local<PreviousExplosions>,
     mut previous_impulses: Local<PreviousImpulses>,
-    mut players_q: Query< &Transform, With<PlayerMarker>>,
+    mut players_q: Query<&Transform, With<PlayerMarker>>,
 ) {
     previous_explosions.explosions.iter().for_each(|pos| {
         gizmos.sphere(*pos, ROCKET_EXPLOSION_RADIUS, PURPLE);

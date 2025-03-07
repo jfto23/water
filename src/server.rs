@@ -522,12 +522,12 @@ pub struct DeathTimer {
 }
 
 pub fn check_player_death(
-    player_q: Query<(Entity, &Player, &Health), With<PlayerMarker>>,
+    player_q: Query<(Entity, &Player, &Health, &Transform), With<PlayerMarker>>,
     mut server: ResMut<RenetServer>,
     mut commands: Commands,
 ) {
-    for (player_ent, player_id, health) in player_q.iter() {
-        if health.0 == 0 {
+    for (player_ent, player_id, health, player_tf) in player_q.iter() {
+        if health.0 == 0 || player_tf.translation.y <= -20.0 {
             commands.entity(player_ent).despawn_recursive();
             let message = bincode::serialize(&ServerMessages::PlayerDeath {
                 server_ent: player_ent,
