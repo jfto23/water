@@ -423,7 +423,8 @@ fn handle_server_player_action(
                 if weapon_timer.0.finished() {
                     weapon_timer.0.reset();
                     // todo: should be based on camera, not player_tf
-                    let spawn_location = player_tf.translation + (look_direction.0 * 2.0);
+                    let spawn_location =
+                        player_tf.translation + (look_direction.0 * 2.0) + Vec3::new(0.0, 0.4, 0.0);
                     let rocket_speed = look_direction.0 * ROCKET_SPEED;
                     commands.spawn((
                         Name::new("Bullet"),

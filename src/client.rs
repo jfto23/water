@@ -217,6 +217,7 @@ fn receive_message_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
+    asset_server: Res<AssetServer>,
     client_id: Res<CurrentClientId>,
     mut players_q: Query<
         (&mut Transform, &mut LinearVelocity, &mut Health, Entity),
@@ -305,6 +306,29 @@ fn receive_message_system(
                             NotShadowCaster,
                         ))
                         .id();
+
+                    let crosshair = commands
+                        .spawn((
+                            Node {
+                                width: Val::Percent(100.),
+                                height: Val::Percent(100.),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
+                            Name::new("Crosshair"),
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Node {
+                                    width: Val::Px(7.0),
+                                    height: Val::Px(7.0),
+                                    ..default()
+                                },
+                                BackgroundColor(WHITE.into()),
+                            ));
+                        });
 
                     commands.entity(client_entity).add_child(view_model_cam);
                     commands.entity(client_entity).add_child(arm);
