@@ -23,6 +23,7 @@ mod bimap;
 mod camera;
 mod character;
 mod client;
+mod console;
 mod consts;
 mod input;
 mod network_visualizer;
@@ -115,6 +116,7 @@ fn main() {
         .add_plugins(character::CharacterControllerPlugin)
         .add_plugins(input::InputPlugin)
         .add_systems(Update, inspector_ui)
+        .add_plugins(console::ConsolePlugin)
         .run();
 }
 

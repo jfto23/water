@@ -10,6 +10,7 @@ use crate::{
     input::{build_input_map, Action, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
     water::Rocket,
+    AppState,
 };
 use avian3d::{
     math::Scalar,
@@ -83,7 +84,10 @@ impl Plugin for ClientPlugin {
         ));
 
         app.add_systems(PostUpdate, generate_action_diffs::<Action>);
-        app.add_systems(FixedUpdate, send_action_diffs::<Action>);
+        app.add_systems(
+            FixedUpdate,
+            send_action_diffs::<Action>.run_if(in_state(AppState::Main)),
+        );
         app.add_systems(FixedUpdate, (send_message_system, receive_message_system));
         app.add_systems(Update, update_visualizer_system);
         app.add_event::<ActionDiffEvent<Action>>();

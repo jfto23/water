@@ -1,6 +1,7 @@
 use std::f32::consts::PI;
 
 use crate::camera::*;
+use crate::console::GameSettings;
 use crate::consts::*;
 use avian3d::math::Scalar;
 use avian3d::prelude::*;
@@ -342,27 +343,30 @@ fn debug_rocket_explosion(
     mut previous_explosions: Local<PreviousExplosions>,
     mut previous_impulses: Local<PreviousImpulses>,
     mut players_q: Query<&Transform, With<PlayerMarker>>,
+    settings: Res<GameSettings>,
 ) {
-    previous_explosions.explosions.iter().for_each(|pos| {
-        gizmos.sphere(*pos, ROCKET_EXPLOSION_RADIUS, PURPLE);
-    });
-    previous_impulses
-        .start
-        .iter()
-        .enumerate()
-        .for_each(|(i, _)| {
-            gizmos.line(previous_impulses.start[i], previous_impulses.end[i], GREEN);
+    if settings.show_debug_rocket {
+        previous_explosions.explosions.iter().for_each(|pos| {
+            gizmos.sphere(*pos, ROCKET_EXPLOSION_RADIUS, PURPLE);
         });
-    for ev in explosion.read() {
-        // todo make this server authoritative.
-        // it sometimes collides only on the server but then the client will not see the explosion
-        debug!("explosion at {:?}", ev.pos);
-        previous_explosions.explosions.push(ev.pos);
+        previous_impulses
+            .start
+            .iter()
+            .enumerate()
+            .for_each(|(i, _)| {
+                gizmos.line(previous_impulses.start[i], previous_impulses.end[i], GREEN);
+            });
+        for ev in explosion.read() {
+            // todo make this server authoritative.
+            // it sometimes collides only on the server but then the client will not see the explosion
+            debug!("explosion at {:?}", ev.pos);
+            previous_explosions.explosions.push(ev.pos);
 
-        for player_tf in players_q.iter_mut() {
-            if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
-                previous_impulses.start.push(ev.pos);
-                previous_impulses.end.push(player_tf.translation);
+            for player_tf in players_q.iter_mut() {
+                if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
+                    previous_impulses.start.push(ev.pos);
+                    previous_impulses.end.push(player_tf.translation);
+                }
             }
         }
     }

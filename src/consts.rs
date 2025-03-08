@@ -17,4 +17,4 @@ pub const PSEUDO_MAX_AIR_SPEED: f32 = 7.0;
 
 pub const PLAYER_HEALTH: usize = 128;
 // in seconds
-pub const PLAYER_DEATH_TIMER: f32 = 2.0;
+pub const PLAYER_DEATH_TIMER: f32 = 1.0;
