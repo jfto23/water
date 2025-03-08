@@ -25,7 +25,7 @@ use bevy_renet::{
 };
 
 use crate::{
-    camera::{spawn_camera, CameraSensitivity, PlayerMarker},
+    camera::{CameraSensitivity, PlayerMarker},
     character::*,
     client::{
         ClientAction, ClientButtonState, ClientChannel, ClientInput, ClientLookDirection,
@@ -34,10 +34,13 @@ use crate::{
     consts::{PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
     input::{build_input_map, Action, LookDirection, MovementIntent},
     water::Rocket,
+    AppState,
 };
 use leafwing_input_manager::prelude::*;
 
 use crate::network_visualizer::visualizer::RenetServerVisualizer;
+
+use super::server_camera::*;
 
 pub struct ServerPlugin;
 
@@ -67,6 +70,10 @@ impl Plugin for ServerPlugin {
         app.add_plugins(InputManagerPlugin::<Action>::server());
 
         app.add_systems(Startup, spawn_camera);
+        app.add_systems(
+            Update,
+            (server_camera_controller, server_camera_look).run_if(in_state(AppState::Main)),
+        );
         app.insert_resource(RenetServerVisualizer::<200>::default());
 
         app.add_systems(FixedUpdate, handle_events_system);

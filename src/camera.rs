@@ -229,12 +229,3 @@ fn toggle_cursor_grab(
         primary_window.cursor_options.visible = true;
     }
 }
-
-pub fn spawn_camera(mut commands: Commands) {
-    commands.spawn((
-        Name::new("Server Free Cam"),
-        Camera3d::default(),
-        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-        CameraSensitivity::default(),
-    ));
-}
