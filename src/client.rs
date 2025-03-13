@@ -1,4 +1,5 @@
 use std::{
+    f32::consts::PI,
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
@@ -6,7 +7,7 @@ use std::{
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
     character::{CharacterControllerBundle, Health},
-    consts::{PLAYER_HEALTH, ROCKET_SPEED},
+    consts::{CHARACTER_MODEL_PATH, PLAYER_HEALTH, ROCKET_SPEED},
     input::{build_input_map, Action, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
     water::Rocket,
@@ -160,6 +161,7 @@ pub enum ClientInput {
     Shoot,
 }
 
+// todo clean this up
 #[derive(Deserialize, Serialize, Clone, Copy, Debug)]
 pub enum ClientButtonState {
     Pressed(ClientInput),
@@ -236,8 +238,7 @@ fn receive_message_system(
                 let client_entity = commands
                     .spawn((
                         Name::new("Player entity"),
-                        Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
-                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
+                        //Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
                         Transform::from_xyz(0.0, 1.5, 0.0),
                         NotShadowCaster,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
@@ -333,6 +334,20 @@ fn receive_message_system(
                     commands.entity(client_entity).add_child(view_model_cam);
                     commands.entity(client_entity).add_child(arm);
                     commands.entity(client_entity).insert(Name::new("MyPlayer"));
+                } else {
+                    // only show model for other player
+                    let mut player_model_tf = Transform::from_xyz(0., -1., 0.);
+                    player_model_tf.rotate_local_y(PI / 2.);
+                    let player_model =
+                        commands
+                            .spawn((
+                                SceneRoot(asset_server.load(
+                                    GltfAssetLabel::Scene(0).from_asset(CHARACTER_MODEL_PATH),
+                                )),
+                                player_model_tf,
+                            ))
+                            .id();
+                    commands.entity(client_entity).add_child(player_model);
                 }
 
                 let player_info = PlayerInfo {

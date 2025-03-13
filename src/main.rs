@@ -19,6 +19,7 @@ use rand::Rng;
 use rand::SeedableRng;
 use server::ServerPlugin;
 
+mod animation;
 mod bimap;
 mod camera;
 mod character;
@@ -117,6 +118,7 @@ fn main() {
         .add_plugins(input::InputPlugin)
         .add_systems(Update, inspector_ui)
         .add_plugins(console::ConsolePlugin)
+        .add_plugins(animation::AnimationPlugin)
         .run();
 }
 

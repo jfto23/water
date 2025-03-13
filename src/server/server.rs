@@ -10,6 +10,7 @@ use bevy_egui::EguiContexts;
 use leafwing_input_manager::prelude::ActionState;
 use serde::{Deserialize, Serialize};
 use std::{
+    f32::consts::PI,
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
@@ -31,7 +32,9 @@ use crate::{
         ClientAction, ClientButtonState, ClientChannel, ClientInput, ClientLookDirection,
         ClientMouseMovement,
     },
-    consts::{PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN},
+    consts::{
+        CHARACTER_MODEL_PATH, PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN,
+    },
     input::{build_input_map, Action, LookDirection, MovementIntent},
     water::Rocket,
     AppState,
@@ -202,11 +205,10 @@ fn handle_events_system(
     mut players: Query<(Entity, &Player, &Transform, &mut LookDirection)>,
     mut lobby: ResMut<ServerLobby>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut movement_event_writer: EventWriter<ClientAction<Action>>,
     mut mouse_event_writer: EventWriter<ClientMouseMovement>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
+    asset_server: Res<AssetServer>,
 ) {
     for event in server_events.read() {
         match event {
@@ -230,8 +232,6 @@ fn handle_events_system(
                 let player_entity = commands
                     .spawn((
                         Name::new("Player entity"),
-                        Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
-                        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
                         NotShadowCaster,
                         transform,
                         CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
@@ -258,6 +258,21 @@ fn handle_events_system(
                         Duration::from_secs_f32(SHOOT_COOLDOWN),
                         TimerMode::Once,
                     )));
+
+                let mut player_model_tf = Transform::from_xyz(0., -1., 0.);
+                player_model_tf.rotate_local_y(PI / 2.);
+                let player_model = commands
+                    .spawn((
+                        SceneRoot(
+                            asset_server
+                                .load(GltfAssetLabel::Scene(0).from_asset(CHARACTER_MODEL_PATH)),
+                        ),
+                        player_model_tf,
+                        Name::new("Player Model"),
+                    ))
+                    .id();
+                commands.entity(player_entity).add_child(player_model);
+
                 lobby.players.insert(*client_id, player_entity);
                 let translation: [f32; 3] = transform.translation.into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {

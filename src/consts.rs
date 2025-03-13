@@ -20,3 +20,5 @@ pub const PLAYER_HEALTH: usize = 128;
 pub const PLAYER_DEATH_TIMER: f32 = 1.0;
 
 pub const SERVER_CAMERA_SPEED: f32 = 32.0;
+
+pub const CHARACTER_MODEL_PATH: &str = "models/character.glb";
