@@ -306,8 +306,8 @@ fn receive_message_system(
         for i in 0..networked_entities.entities.len() {
             if let Some(entity) = network_mapping.0.get(&networked_entities.entities[i]) {
                 let translation = networked_entities.translations[i].into();
-                //let rotation = Quat::from_array(networked_entities.rotations[i]);
                 let velocity = LinearVelocity(networked_entities.velocities[i].into());
+
                 /*
                 debug!(
                     "Updating transform of {:?}, New Transform: {:?}",
@@ -322,10 +322,16 @@ fn receive_message_system(
                 };
 
                 player_tf.translation = translation;
-                //player_tf.rotation = rotation;
                 *player_velocity = velocity;
                 player_health.0 = networked_entities.health[i];
 
+                if lobby
+                    .players
+                    .get(&client_id.0)
+                    .is_some_and(|inner| inner.client_entity != *entity)
+                {
+                    player_tf.rotation = Quat::from_array(networked_entities.rotations[i]);
+                }
                 //commands.entity(*entity).insert(transform);
             }
         }
