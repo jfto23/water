@@ -28,10 +28,7 @@ use bevy_renet::{
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
     character::*,
-    client::{
-        ClientAction, ClientButtonState, ClientChannel, ClientInput, ClientLookDirection,
-        ClientMouseMovement,
-    },
+    client::{ClientAction, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement},
     consts::{
         CHARACTER_MODEL_PATH, PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN,
     },

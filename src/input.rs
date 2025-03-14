@@ -68,21 +68,6 @@ fn read_input_map(
     }
 }
 
-fn generate_client_button_state(
-    just_pressed: bool,
-    just_released: bool,
-    client_input: ClientInput,
-) -> Vec<ClientButtonState> {
-    let mut inputs = Vec::new();
-    if just_pressed {
-        inputs.push(ClientButtonState::Pressed(client_input));
-    }
-    if just_released {
-        inputs.push(ClientButtonState::Released(client_input));
-    }
-    return inputs;
-}
-
 #[derive(Actionlike, PartialEq, Eq, Hash, Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
 pub enum Action {
     Forward,

@@ -161,14 +161,6 @@ pub enum ClientInput {
     Shoot,
 }
 
-// todo clean this up
-#[derive(Deserialize, Serialize, Clone, Copy, Debug)]
-pub enum ClientButtonState {
-    Pressed(ClientInput),
-    Released(ClientInput),
-    //Once(ClientInput),
-}
-
 pub enum ClientChannel {
     Input,
     MouseInput,
