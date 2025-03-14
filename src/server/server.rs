@@ -192,7 +192,7 @@ pub struct Player {
 }
 
 #[derive(Debug, Component)]
-pub struct WeaponCooldown(Timer);
+pub struct WeaponCooldown(pub Timer);
 
 #[derive(Debug, Default, Resource)]
 pub struct ServerLobby {
@@ -209,6 +209,8 @@ fn handle_events_system(
     mut mouse_event_writer: EventWriter<ClientMouseMovement>,
     mut visualizer: ResMut<RenetServerVisualizer<200>>,
     asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for event in server_events.read() {
         match event {
@@ -228,53 +230,17 @@ fn handle_events_system(
                     server.send_message(*client_id, ServerChannel::ServerMessages, message);
                 }
 
-                let transform = Transform::from_xyz(0.0, 1.5, 0.0);
-                let player_entity = commands
-                    .spawn((
-                        Name::new("Player entity"),
-                        NotShadowCaster,
-                        transform,
-                        CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.9, 7.0, (20.0 as Scalar).to_radians()),
-                        Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
-                        Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
-                        GravityScale(2.0),
-                        PlayerMarker,
-                        MovementIntent::default(),
-                        TransformInterpolation,
-                        CameraSensitivity::default(),
-                        InputManagerBundle::with_map(build_input_map()),
-                        Player { id: *client_id },
-                    ))
-                    .id();
-
-                commands
-                    .entity(player_entity)
-                    .insert(LookDirection::default());
-                commands.entity(player_entity).insert(Health(PLAYER_HEALTH));
-                commands
-                    .entity(player_entity)
-                    .insert(WeaponCooldown(Timer::new(
-                        Duration::from_secs_f32(SHOOT_COOLDOWN),
-                        TimerMode::Once,
-                    )));
-
-                let mut player_model_tf = Transform::from_xyz(0., -1., 0.);
-                player_model_tf.rotate_local_y(PI / 2.);
-                let player_model = commands
-                    .spawn((
-                        SceneRoot(
-                            asset_server
-                                .load(GltfAssetLabel::Scene(0).from_asset(CHARACTER_MODEL_PATH)),
-                        ),
-                        player_model_tf,
-                        Name::new("Player Model"),
-                    ))
-                    .id();
-                commands.entity(player_entity).add_child(player_model);
+                let player_entity = build_player_ent(
+                    &mut commands,
+                    &asset_server,
+                    *client_id,
+                    NetworkScenario::Server,
+                    &mut meshes,
+                    &mut materials,
+                );
 
                 lobby.players.insert(*client_id, player_entity);
-                let translation: [f32; 3] = transform.translation.into();
+                let translation: [f32; 3] = Vec3::new(0.0, 1.5, 0.0).into();
                 let message = bincode::serialize(&ServerMessages::PlayerCreate {
                     id: *client_id,
                     entity: player_entity,
@@ -573,6 +539,7 @@ pub fn respawn_player(
     time_fixed: Res<Time<Fixed>>,
     mut commands: Commands,
     mut server: ResMut<RenetServer>,
+    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -583,19 +550,15 @@ pub fn respawn_player(
             commands.entity(ent).despawn();
 
             let transform = Transform::from_xyz(0.0, 1.5, 0.0);
-            let player_entity =
-                build_player_ent(&mut commands, &mut meshes, &mut materials, death_timer.id);
+            let player_entity = build_player_ent(
+                &mut commands,
+                &asset_server,
+                death_timer.id,
+                NetworkScenario::Server,
+                &mut meshes,
+                &mut materials,
+            );
 
-            commands
-                .entity(player_entity)
-                .insert(LookDirection::default());
-            commands.entity(player_entity).insert(Health(PLAYER_HEALTH));
-            commands
-                .entity(player_entity)
-                .insert(WeaponCooldown(Timer::new(
-                    Duration::from_secs_f32(SHOOT_COOLDOWN),
-                    TimerMode::Once,
-                )));
             server_lobby.players.insert(death_timer.id, player_entity);
             let translation: [f32; 3] = transform.translation.into();
             let message = bincode::serialize(&ServerMessages::PlayerCreate {
@@ -607,36 +570,4 @@ pub fn respawn_player(
             server.broadcast_message(ServerChannel::ServerMessages, message);
         }
     }
-}
-
-fn build_player_ent(
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    client_id: u64,
-) -> Entity {
-    commands
-        .spawn((
-            Name::new("Player entity"),
-            Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
-            MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-            NotShadowCaster,
-            Transform::from_xyz(0.0, 1.5, 0.0),
-            CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0)).with_movement(
-                50.0,
-                0.9,
-                7.0,
-                (20.0 as Scalar).to_radians(),
-            ),
-            Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
-            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
-            GravityScale(2.0),
-            PlayerMarker,
-            MovementIntent::default(),
-            TransformInterpolation,
-            CameraSensitivity::default(),
-            InputManagerBundle::with_map(build_input_map()),
-            Player { id: client_id },
-        ))
-        .id()
 }

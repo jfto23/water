@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
-    character::{CharacterControllerBundle, Health},
+    character::{build_player_ent, CharacterControllerBundle, Health, NetworkScenario},
     consts::{CHARACTER_MODEL_PATH, PLAYER_HEALTH, ROCKET_SPEED},
     input::{build_input_map, Action, LookDirection, MovementIntent},
     server::{connection_config, NetworkedEntities, Player},
@@ -235,120 +235,26 @@ fn receive_message_system(
                 entity,
             } => {
                 debug!("Spawning player entity for  client:{}", id);
-                let client_entity = commands
-                    .spawn((
-                        Name::new("Player entity"),
-                        //Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
-                        Transform::from_xyz(0.0, 1.5, 0.0),
-                        NotShadowCaster,
-                        CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0))
-                            .with_movement(50.0, 0.9, 7.0, (20.0 as Scalar).to_radians()),
-                        Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
-                        Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
-                        GravityScale(2.0),
-                        PlayerMarker,
-                        MovementIntent::default(),
-                        TransformInterpolation,
-                        CameraSensitivity::default(),
-                        InputManagerBundle::with_map(build_input_map()),
-                        Player { id },
-                    ))
-                    .id();
 
-                commands
-                    .entity(client_entity)
-                    .insert(LookDirection::default());
-                commands.entity(client_entity).insert(Health(PLAYER_HEALTH));
-                if client_id.0 == id {
-                    debug!("spawning world camera and view model camera");
-                    commands.entity(client_entity).insert(ControlledPlayer);
-                    let world_cam = commands
-                        .spawn((
-                            Name::new("World Camera"),
-                            WorldCamera,
-                            Camera3d::default(),
-                            Transform::from_xyz(0., 0.5, 0.),
-                            Projection::from(PerspectiveProjection {
-                                fov: 90.0_f32.to_radians(),
-                                ..default()
-                            }),
-                        ))
-                        .id();
-                    commands.entity(client_entity).add_child(world_cam);
-
-                    let view_model_cam = commands
-                        .spawn((
-                            Name::new("View Model Camera"),
-                            Camera3d::default(),
-                            Camera {
-                                // Bump the order to render on top of the world model.
-                                order: 1,
-                                ..default()
-                            },
-                            Projection::from(PerspectiveProjection {
-                                fov: 90.0_f32.to_radians(),
-                                ..default()
-                            }),
-                            // Only render objects belonging to the view model.
-                            RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
-                        ))
-                        .id();
-
-                    let arm_mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.5));
-                    let arm_material = materials.add(Color::from(WHITE));
-                    let arm = commands
-                        .spawn((
-                            Name::new("Player Arm"),
-                            Mesh3d(arm_mesh),
-                            MeshMaterial3d(arm_material),
-                            Transform::from_xyz(0.3, -0.2, -0.3),
-                            // Ensure the arm is only rendered by the view model camera.
-                            RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
-                            NotShadowCaster,
-                        ))
-                        .id();
-
-                    let crosshair = commands
-                        .spawn((
-                            Node {
-                                width: Val::Percent(100.),
-                                height: Val::Percent(100.),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
-                            Name::new("Crosshair"),
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn((
-                                Node {
-                                    width: Val::Px(7.0),
-                                    height: Val::Px(7.0),
-                                    ..default()
-                                },
-                                BackgroundColor(WHITE.into()),
-                            ));
-                        });
-
-                    commands.entity(client_entity).add_child(view_model_cam);
-                    commands.entity(client_entity).add_child(arm);
-                    commands.entity(client_entity).insert(Name::new("MyPlayer"));
+                let client_entity = if client_id.0 == id {
+                    build_player_ent(
+                        &mut commands,
+                        &asset_server,
+                        id,
+                        NetworkScenario::MyClient,
+                        &mut meshes,
+                        &mut materials,
+                    )
                 } else {
-                    // only show model for other player
-                    let mut player_model_tf = Transform::from_xyz(0., -1., 0.);
-                    player_model_tf.rotate_local_y(PI / 2.);
-                    let player_model =
-                        commands
-                            .spawn((
-                                SceneRoot(asset_server.load(
-                                    GltfAssetLabel::Scene(0).from_asset(CHARACTER_MODEL_PATH),
-                                )),
-                                player_model_tf,
-                            ))
-                            .id();
-                    commands.entity(client_entity).add_child(player_model);
-                }
+                    build_player_ent(
+                        &mut commands,
+                        &asset_server,
+                        id,
+                        NetworkScenario::OtherClient,
+                        &mut meshes,
+                        &mut materials,
+                    )
+                };
 
                 let player_info = PlayerInfo {
                     server_entity: entity,

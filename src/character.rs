@@ -1,12 +1,22 @@
+use std::time::Duration;
+
 use avian3d::{math::*, prelude::*};
+use bevy::color::palettes::css::WHITE;
 use bevy::input::mouse::*;
+use bevy::pbr::NotShadowCaster;
+use bevy::render::view::RenderLayers;
 use bevy::{ecs::query::Has, prelude::*};
 use leafwing_input_manager::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::camera::{CameraSensitivity, PlayerMarker, WorldCamera};
 use crate::client::{ClientAction, ControlledPlayer};
-use crate::consts::PSEUDO_MAX_AIR_SPEED;
-use crate::input::{Action, MovementIntent};
+use crate::consts::{
+    CHARACTER_MODEL_PATH, PLAYER_HEALTH, PSEUDO_MAX_AIR_SPEED, SHOOT_COOLDOWN,
+    VIEW_MODEL_RENDER_LAYER,
+};
+use crate::input::{build_input_map, Action, LookDirection, MovementIntent};
+use crate::server::{Player, WeaponCooldown};
 
 pub struct CharacterControllerPlugin;
 
@@ -302,4 +312,149 @@ pub fn update_player_ui(
         return;
     };
     txt.0 = format!("{}", health.0);
+}
+
+pub enum NetworkScenario {
+    Server,
+    MyClient,
+    OtherClient,
+}
+
+pub fn build_player_ent(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    client_id: u64,
+    scenario: NetworkScenario,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+) -> Entity {
+    let player_entity = commands
+        .spawn((
+            Name::new("Player entity"),
+            NotShadowCaster,
+            Transform::from_xyz(0.0, 1.5, 0.0),
+            CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0)).with_movement(
+                50.0,
+                0.9,
+                7.0,
+                (20.0 as Scalar).to_radians(),
+            ),
+            Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
+            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
+            GravityScale(2.0),
+            PlayerMarker,
+            MovementIntent::default(),
+            TransformInterpolation,
+            CameraSensitivity::default(),
+            InputManagerBundle::with_map(build_input_map()),
+            Player { id: client_id },
+        ))
+        .id();
+
+    commands
+        .entity(player_entity)
+        .insert(LookDirection::default());
+    commands.entity(player_entity).insert(Health(PLAYER_HEALTH));
+    commands
+        .entity(player_entity)
+        .insert(WeaponCooldown(Timer::new(
+            Duration::from_secs_f32(SHOOT_COOLDOWN),
+            TimerMode::Once,
+        )));
+
+    match scenario {
+        NetworkScenario::Server | NetworkScenario::OtherClient => {
+            let mut player_model_tf = Transform::from_xyz(0., -1., 0.);
+            player_model_tf.rotate_local_y(PI / 2.);
+            let player_model = commands
+                .spawn((
+                    SceneRoot(
+                        asset_server
+                            .load(GltfAssetLabel::Scene(0).from_asset(CHARACTER_MODEL_PATH)),
+                    ),
+                    player_model_tf,
+                    Name::new("Player Model"),
+                ))
+                .id();
+            commands.entity(player_entity).add_child(player_model);
+        }
+
+        NetworkScenario::MyClient => {
+            commands.entity(player_entity).insert(ControlledPlayer);
+            let world_cam = commands
+                .spawn((
+                    Name::new("World Camera"),
+                    WorldCamera,
+                    Camera3d::default(),
+                    Transform::from_xyz(0., 0.5, 0.),
+                    Projection::from(PerspectiveProjection {
+                        fov: 90.0_f32.to_radians(),
+                        ..default()
+                    }),
+                ))
+                .id();
+            commands.entity(player_entity).add_child(world_cam);
+
+            let view_model_cam = commands
+                .spawn((
+                    Name::new("View Model Camera"),
+                    Camera3d::default(),
+                    Camera {
+                        // Bump the order to render on top of the world model.
+                        order: 1,
+                        ..default()
+                    },
+                    Projection::from(PerspectiveProjection {
+                        fov: 90.0_f32.to_radians(),
+                        ..default()
+                    }),
+                    // Only render objects belonging to the view model.
+                    RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
+                ))
+                .id();
+
+            let arm_mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.5));
+            let arm_material = materials.add(Color::from(WHITE));
+            let arm = commands
+                .spawn((
+                    Name::new("Player Arm"),
+                    Mesh3d(arm_mesh),
+                    MeshMaterial3d(arm_material),
+                    Transform::from_xyz(0.3, -0.2, -0.3),
+                    // Ensure the arm is only rendered by the view model camera.
+                    RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
+                    NotShadowCaster,
+                ))
+                .id();
+
+            let crosshair = commands
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.),
+                        height: Val::Percent(100.),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    RenderLayers::layer(VIEW_MODEL_RENDER_LAYER),
+                    Name::new("Crosshair"),
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Node {
+                            width: Val::Px(7.0),
+                            height: Val::Px(7.0),
+                            ..default()
+                        },
+                        BackgroundColor(WHITE.into()),
+                    ));
+                });
+
+            commands.entity(player_entity).add_child(view_model_cam);
+            commands.entity(player_entity).add_child(arm);
+            commands.entity(player_entity).insert(Name::new("MyPlayer"));
+        }
+    }
+
+    return player_entity;
 }
