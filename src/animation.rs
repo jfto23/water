@@ -13,26 +13,13 @@ use crate::{camera::PlayerMarker, consts::CHARACTER_MODEL_PATH, input::MovementI
 
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup)
-            .add_systems(Update, setup_scene_once_loaded)
+        app.add_systems(Update, setup_scene_once_loaded)
             .add_systems(Update, disable_culling_for_skinned_meshes)
             .add_systems(Update, get_neck_bone)
             .add_systems(Update, keyboard_input_test)
             .add_systems(Update, handle_run_animation)
             .add_systems(Update, link_animations);
     }
-}
-
-fn setup(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    commands.spawn((
-        Name::new("running dude"),
-        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(CHARACTER_MODEL_PATH))),
-    ));
 }
 
 #[derive(Clone, Debug, Resource)]

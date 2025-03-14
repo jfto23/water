@@ -333,7 +333,11 @@ pub fn build_player_ent(
             Name::new("Player entity"),
             NotShadowCaster,
             Transform::from_xyz(0.0, 1.5, 0.0),
-            CharacterControllerBundle::new(Collider::cuboid(1.0, 2.0, 1.0)).with_movement(
+            // note: there is a bug with avian
+            //https://github.com/Jondolf/avian/issues/640
+            // box collider get stuck on triangles/ledges
+            // so use capsule instead
+            CharacterControllerBundle::new(Collider::capsule(0.5, 1.2)).with_movement(
                 50.0,
                 0.9,
                 7.0,
@@ -364,7 +368,7 @@ pub fn build_player_ent(
 
     match scenario {
         NetworkScenario::Server | NetworkScenario::OtherClient => {
-            let mut player_model_tf = Transform::from_xyz(0., -1., 0.);
+            let mut player_model_tf = Transform::from_xyz(0., -1.1, 0.);
             player_model_tf.rotate_local_y(PI / 2.);
             let player_model = commands
                 .spawn((
