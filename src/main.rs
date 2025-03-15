@@ -27,10 +27,11 @@ mod client;
 mod console;
 mod consts;
 mod input;
+mod menu;
 mod network_visualizer;
 mod server;
+mod ui;
 mod water;
-mod menu;
 
 #[derive(Resource, Deref, DerefMut)]
 pub struct RngResource(StdRng);
@@ -120,6 +121,8 @@ fn main() {
         .add_systems(Update, inspector_ui)
         .add_plugins(console::ConsolePlugin)
         .add_plugins(animation::AnimationPlugin)
+        .add_plugins(menu::MenuPlugin)
+        .add_plugins(ui::UiPlugin)
         .run();
 }
 

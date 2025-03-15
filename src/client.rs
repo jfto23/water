@@ -9,8 +9,9 @@ use crate::{
     character::{build_player_ent, CharacterControllerBundle, Health, NetworkScenario},
     consts::{CHARACTER_MODEL_PATH, PLAYER_HEALTH, ROCKET_SPEED},
     input::{build_input_map, Action, LookDirection, MovementIntent},
+    menu,
     server::{connection_config, NetworkedEntities, Player},
-    water::Rocket,
+    water::{GameState, Rocket},
     AppState,
 };
 use avian3d::{
@@ -55,27 +56,9 @@ impl Plugin for ClientPlugin {
         // Setup the transport layer
         app.add_plugins(NetcodeClientPlugin);
 
-        let server_addr = "127.0.0.1:5000".parse().unwrap();
-        let current_time = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let client_id = current_time.as_millis() as u64;
-        let authentication = ClientAuthentication::Unsecure {
-            server_addr,
-            client_id,
-            user_data: None,
-            protocol_id: 0,
-        };
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let current_time = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+        app.add_systems(OnEnter(GameState::Game), setup_client);
 
         app.add_plugins(InputManagerPlugin::<Action>::default());
-
-        app.insert_resource(transport);
-        app.insert_resource(CurrentClientId(client_id));
 
         app.insert_resource(ClientLobby::default());
         //app.insert_resource(PlayerInput::default());
@@ -93,6 +76,27 @@ impl Plugin for ClientPlugin {
         app.add_systems(Update, update_visualizer_system);
         app.add_event::<ActionDiffEvent<Action>>();
     }
+}
+
+fn setup_client(mut commands: Commands) {
+    let server_addr = "127.0.0.1:5000".parse().unwrap();
+    let current_time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    let client_id = current_time.as_millis() as u64;
+    let authentication = ClientAuthentication::Unsecure {
+        server_addr,
+        client_id,
+        user_data: None,
+        protocol_id: 0,
+    };
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let current_time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
+    commands.insert_resource(transport);
+    commands.insert_resource(CurrentClientId(client_id));
 }
 
 fn send_message_system(mut client: ResMut<RenetClient>) {
@@ -212,12 +216,15 @@ fn receive_message_system(
     mut lobby: ResMut<ClientLobby>,
     mut network_mapping: ResMut<NetworkMapping>,
     asset_server: Res<AssetServer>,
-    client_id: Res<CurrentClientId>,
+    client_id: Option<Res<CurrentClientId>>,
     mut players_q: Query<
         (&mut Transform, &mut LinearVelocity, &mut Health, Entity),
         With<PlayerMarker>,
     >,
 ) {
+    let Some(client_id) = client_id else {
+        return;
+    };
     while let Some(message) = client.receive_message(ServerChannel::ServerMessages) {
         let server_message = bincode::deserialize(&message).unwrap();
         match server_message {

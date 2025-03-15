@@ -33,6 +33,7 @@ use crate::{
         CHARACTER_MODEL_PATH, PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN,
     },
     input::{build_input_map, Action, LookDirection, MovementIntent},
+    water::GameState,
     water::Rocket,
     AppState,
 };
@@ -45,31 +46,16 @@ use super::server_camera::*;
 pub struct ServerPlugin;
 
 impl Plugin for ServerPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&self, mut app: &mut App) {
         app.add_plugins(RenetServerPlugin);
 
-        let server = RenetServer::new(connection_config());
-        app.insert_resource(server);
         app.insert_resource(ServerLobby::default());
-        // Transport layer setup
-        app.add_plugins(NetcodeServerPlugin);
-        let server_addr = "127.0.0.1:5000".parse().unwrap();
-        let socket = UdpSocket::bind(server_addr).unwrap();
-        let server_config = ServerConfig {
-            current_time: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap(),
-            max_clients: 64,
-            protocol_id: 0,
-            public_addresses: vec![server_addr],
-            authentication: ServerAuthentication::Unsecure,
-        };
-        let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
-        app.insert_resource(transport);
 
         app.add_plugins(InputManagerPlugin::<Action>::server());
 
-        app.add_systems(Startup, spawn_camera);
+        app.add_systems(OnEnter(GameState::Game), spawn_camera);
+        // todo: the server starts at startup, but it should start when choosing the option to host
+        add_netcode_network(&mut app);
         app.add_systems(
             Update,
             (server_camera_controller, server_camera_look).run_if(in_state(AppState::Main)),
@@ -102,6 +88,27 @@ impl Plugin for ServerPlugin {
 
         app.add_event::<ServerPlayerAction>();
     }
+}
+
+fn add_netcode_network(app: &mut App) {
+    app.add_plugins(NetcodeServerPlugin);
+
+    let server = RenetServer::new(connection_config());
+    let server_addr = "127.0.0.1:5000".parse().unwrap();
+    let socket = UdpSocket::bind(server_addr).unwrap();
+    let server_config = ServerConfig {
+        current_time: SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap(),
+        max_clients: 64,
+        protocol_id: 0,
+        public_addresses: vec![server_addr],
+        authentication: ServerAuthentication::Unsecure,
+    };
+
+    let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
+    app.insert_resource(server);
+    app.insert_resource(transport);
 }
 
 fn send_message_system(mut server: ResMut<RenetServer>) {
@@ -250,7 +257,7 @@ fn handle_events_system(
                 debug!("Client {client_id} disconnected: {reason}");
                 visualizer.remove_client(*client_id);
                 if let Some(player_entity) = lobby.players.remove(client_id) {
-                    commands.entity(player_entity).despawn();
+                    commands.entity(player_entity).despawn_recursive();
                 }
 
                 let message =

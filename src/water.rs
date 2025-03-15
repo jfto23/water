@@ -21,7 +21,7 @@ pub struct WaterPlugin;
 
 impl Plugin for WaterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (water_setup /*spawn_player*/,))
+        app.add_systems(OnEnter(GameState::Game), (water_setup /*spawn_player*/,))
             .add_systems(
                 FixedUpdate,
                 (handle_rocket_collision, handle_rocket_explosion).chain(),
@@ -37,7 +37,6 @@ pub enum GameState {
     MainMenu,
     Game,
 }
-
 
 fn water_setup(
     mut commands: Commands,

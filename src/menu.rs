@@ -1,11 +1,12 @@
 pub struct MenuPlugin;
 
-use water::GameState; 
-use crate::*;
+use crate::camera::*;
+use crate::water::GameState;
+
+use bevy::app::AppExit;
+use bevy::prelude::*;
 
 const TEXT_COLOR: Color = Color::srgb(0.9, 0.9, 0.9);
-use bevy::app::AppExit;
-
 // One of the two settings that can be set through the menu. It will be a resource in the app
 #[derive(Resource, Debug, Component, PartialEq, Eq, Clone, Copy)]
 enum DisplayQuality {
@@ -160,8 +161,8 @@ fn menu_setup(mut menu_state: ResMut<NextState<MenuState>>) {
 fn main_menu_setup(mut commands: Commands) {
     // Common style for all buttons on the screen
     let button_node = Node {
-        width: Val::Px(100.0),
-        height: Val::Px(20.0),
+        width: Val::Px(400.0),
+        height: Val::Px(80.0),
         margin: UiRect::all(Val::Px(5.0)),
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
@@ -191,9 +192,9 @@ fn main_menu_setup(mut commands: Commands) {
                 .with_children(|parent| {
                     // Display the game name
                     parent.spawn((
-                        Text::new("Block game"),
+                        Text::new("Water"),
                         TextFont {
-                            font_size: 20.0,
+                            font_size: 60.0,
                             ..Default::default()
                         },
                         TextColor(TEXT_COLOR),
@@ -211,7 +212,13 @@ fn main_menu_setup(mut commands: Commands) {
                             MenuButtonAction::Play,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(Text::new("New Game"));
+                            parent.spawn((
+                                Text::new("New Game"),
+                                TextFont {
+                                    font_size: 60.0,
+                                    ..Default::default()
+                                },
+                            ));
                         });
                     parent
                         .spawn((
@@ -221,7 +228,13 @@ fn main_menu_setup(mut commands: Commands) {
                             MenuButtonAction::Settings,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(Text::new("Settings"));
+                            parent.spawn((
+                                Text::new("Settings"),
+                                TextFont {
+                                    font_size: 60.0,
+                                    ..Default::default()
+                                },
+                            ));
                         });
                     parent
                         .spawn((
@@ -231,7 +244,13 @@ fn main_menu_setup(mut commands: Commands) {
                             MenuButtonAction::Quit,
                         ))
                         .with_children(|parent| {
-                            parent.spawn(Text::new("Quit"));
+                            parent.spawn((
+                                Text::new("Quit"),
+                                TextFont {
+                                    font_size: 60.0,
+                                    ..Default::default()
+                                },
+                            ));
                         });
                 });
         });
@@ -239,8 +258,8 @@ fn main_menu_setup(mut commands: Commands) {
 
 fn settings_menu_setup(mut commands: Commands) {
     let button_node = Node {
-        width: Val::Px(100.0),
-        height: Val::Px(20.0),
+        width: Val::Px(200.0),
+        height: Val::Px(40.0),
         margin: UiRect::all(Val::Px(20.0)),
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
@@ -435,7 +454,7 @@ fn sound_settings_menu_setup(mut commands: Commands, volume: Res<Volume>) {
                             parent.spawn((
                                 Text::new("Back"),
                                 TextFont {
-                                    font_size: 10.0,
+                                    font_size: 60.0,
                                     ..Default::default()
                                 },
                                 TextColor(TEXT_COLOR),
@@ -481,9 +500,8 @@ fn menu_action(
 }
 
 // Generic system that takes a component as a parameter, and will despawn all entities with that component
-fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
+pub fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
     for entity in &to_despawn {
         commands.entity(entity).despawn_recursive();
     }
 }
-

@@ -253,7 +253,7 @@ fn handle_run_animation(
     anim_nodes: Option<Res<PlayerAnimationNodes>>,
 ) {
     let Some(anim_nodes) = anim_nodes else {
-        debug!("unable to find anim_player");
+        //debug!("unable to find anim_player");
         return;
     };
     for (vel, animation_link) in player_q.iter() {
