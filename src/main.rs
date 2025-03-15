@@ -30,6 +30,7 @@ mod input;
 mod network_visualizer;
 mod server;
 mod water;
+mod menu;
 
 #[derive(Resource, Deref, DerefMut)]
 pub struct RngResource(StdRng);

@@ -27,9 +27,18 @@ impl Plugin for WaterPlugin {
                 (handle_rocket_collision, handle_rocket_explosion).chain(),
             )
             .add_systems(Update, debug_rocket_explosion)
-            .add_event::<RocketExplosion>();
+            .add_event::<RocketExplosion>()
+            .init_state::<GameState>();
     }
 }
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    MainMenu,
+    Game,
+}
+
+
 fn water_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
