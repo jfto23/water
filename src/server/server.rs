@@ -1,10 +1,7 @@
 use avian3d::{
     math::{Scalar, Vector3},
     parry::utils::hashmap::HashMap,
-    prelude::{
-        Collider, LinearVelocity,
-        RigidBody,
-    },
+    prelude::{Collider, LinearVelocity, RigidBody},
 };
 use bevy_egui::EguiContexts;
 use leafwing_input_manager::prelude::ActionState;
@@ -28,9 +25,7 @@ use crate::{
     camera::{CameraSensitivity, PlayerMarker},
     character::*,
     client::{ClientAction, ClientChannel, ClientLookDirection, ClientMouseMovement},
-    consts::{
-        PLAYER_DEATH_TIMER, ROCKET_SPEED,
-    },
+    consts::{PLAYER_DEATH_TIMER, ROCKET_SPEED},
     input::{Action, LookDirection, MovementIntent},
     water::GameState,
     water::Rocket,
@@ -256,7 +251,7 @@ fn handle_events_system(
                 debug!("Client {client_id} disconnected: {reason}");
                 visualizer.remove_client(*client_id);
                 if let Some(player_entity) = lobby.players.remove(client_id) {
-                    commands.entity(player_entity).despawn_recursive();
+                    commands.entity(player_entity).try_despawn_recursive();
                 }
 
                 let message =

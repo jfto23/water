@@ -12,14 +12,8 @@ use crate::{
     water::{GameState, Rocket},
     AppState,
 };
-use avian3d::prelude::{
-        Collider, LinearVelocity,
-        RigidBody,
-    };
-use bevy::{
-    prelude::*,
-    utils::HashMap,
-};
+use avian3d::prelude::{Collider, LinearVelocity, RigidBody};
+use bevy::{prelude::*, utils::HashMap};
 use bevy_egui::EguiContexts;
 use bevy_renet::{
     netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport},
