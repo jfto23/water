@@ -6,7 +6,7 @@ use std::{
 };
 
 use bevy::{ecs::system::SystemId, prelude::*};
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{egui, EguiContexts};
 impl Plugin for ConsolePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (ui_example_system, handle_console_commands))
@@ -45,7 +45,7 @@ impl Default for GameSettings {
 
 impl FromWorld for ConsoleCommands {
     #[rustfmt::skip]
-    fn from_world(mut world: &mut World) -> Self {
+    fn from_world(world: &mut World) -> Self {
         let mut console_commands = ConsoleCommands(HashMap::new());
 
         console_commands.0.insert("clear".into(), world.register_system(console_clear));

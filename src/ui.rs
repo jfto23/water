@@ -1,9 +1,8 @@
 pub struct UiPlugin;
 
-use bevy::{prelude::*, window::WindowResized};
+use bevy::prelude::*;
 
 use crate::{
-    consts::{RES_HEIGHT, RES_WIDTH},
     menu::despawn_screen,
     water::GameState,
 };

@@ -2,20 +2,19 @@ use avian3d::{
     math::{Scalar, Vector3},
     parry::utils::hashmap::HashMap,
     prelude::{
-        CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
-        RigidBody, TransformInterpolation,
+        Collider, LinearVelocity,
+        RigidBody,
     },
 };
 use bevy_egui::EguiContexts;
 use leafwing_input_manager::prelude::ActionState;
 use serde::{Deserialize, Serialize};
 use std::{
-    f32::consts::PI,
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
 
-use bevy::{pbr::NotShadowCaster, prelude::*, time::common_conditions::on_timer};
+use bevy::{prelude::*, time::common_conditions::on_timer};
 use bevy_renet::{
     netcode::{NetcodeServerPlugin, NetcodeServerTransport, ServerAuthentication, ServerConfig},
     renet::{
@@ -28,11 +27,11 @@ use bevy_renet::{
 use crate::{
     camera::{CameraSensitivity, PlayerMarker},
     character::*,
-    client::{ClientAction, ClientChannel, ClientInput, ClientLookDirection, ClientMouseMovement},
+    client::{ClientAction, ClientChannel, ClientLookDirection, ClientMouseMovement},
     consts::{
-        CHARACTER_MODEL_PATH, PLAYER_DEATH_TIMER, PLAYER_HEALTH, ROCKET_SPEED, SHOOT_COOLDOWN,
+        PLAYER_DEATH_TIMER, ROCKET_SPEED,
     },
-    input::{build_input_map, Action, LookDirection, MovementIntent},
+    input::{Action, LookDirection, MovementIntent},
     water::GameState,
     water::Rocket,
     AppState,
@@ -111,7 +110,7 @@ fn add_netcode_network(app: &mut App) {
     app.insert_resource(transport);
 }
 
-fn send_message_system(mut server: ResMut<RenetServer>) {
+fn send_message_system(server: ResMut<RenetServer>) {
     let channel_id = 0;
     // Send a text message for all clients
     // The enum DefaultChannel describe the channels used by the default configuration
@@ -305,7 +304,7 @@ fn update_client_input_state(
         debug!("processing client movement event");
 
         if let Some(player_ent) = server_lobby.players.get(&ev.client_id) {
-            if let Ok((mut action_state)) = action_state_query.get_mut(*player_ent) {
+            if let Ok(mut action_state) = action_state_query.get_mut(*player_ent) {
                 action_state.apply_diff(&ev.action_diff);
             }
         }

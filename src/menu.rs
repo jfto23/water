@@ -1,6 +1,5 @@
 pub struct MenuPlugin;
 
-use crate::camera::*;
 use crate::water::GameState;
 
 use bevy::app::AppExit;

@@ -12,8 +12,6 @@ use bevy::render::{render_resource::WgpuFeatures, settings::WgpuSettings};
 use bevy_egui::EguiContext;
 use bevy_egui::EguiPlugin;
 use client::ClientPlugin;
-use input::Action;
-use leafwing_input_manager::prelude::*;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;

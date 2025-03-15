@@ -1,6 +1,6 @@
 pub struct AnimationPlugin;
 
-use std::{collections::HashSet, f32::consts::PI, time::Duration};
+use std::{collections::HashSet, f32::consts::PI};
 
 use avian3d::prelude::LinearVelocity;
 use bevy::{
@@ -9,7 +9,7 @@ use bevy::{
     render::{mesh::skinning::SkinnedMesh, view::NoFrustumCulling},
 };
 
-use crate::{camera::PlayerMarker, consts::CHARACTER_MODEL_PATH, input::MovementIntent};
+use crate::{camera::PlayerMarker, consts::CHARACTER_MODEL_PATH};
 
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
@@ -184,7 +184,7 @@ fn get_neck_bone(
 fn keyboard_input_test(
     keys: Res<ButtonInput<KeyCode>>,
     head_joint: Query<&HeadJoint>,
-    mut bones_q: Query<(&mut Transform)>,
+    mut bones_q: Query<&mut Transform>,
 ) {
     if keys.pressed(KeyCode::KeyL) {
         debug!("pressed L");

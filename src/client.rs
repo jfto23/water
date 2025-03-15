@@ -1,28 +1,23 @@
 use std::{
-    f32::consts::PI,
     net::UdpSocket,
     time::{Duration, SystemTime},
 };
 
 use crate::{
-    camera::{CameraSensitivity, PlayerMarker},
-    character::{build_player_ent, CharacterControllerBundle, Health, NetworkScenario},
-    consts::{CHARACTER_MODEL_PATH, PLAYER_HEALTH, ROCKET_SPEED},
-    input::{build_input_map, Action, LookDirection, MovementIntent},
-    menu,
-    server::{connection_config, NetworkedEntities, Player},
+    camera::PlayerMarker,
+    character::{build_player_ent, Health, NetworkScenario},
+    consts::ROCKET_SPEED,
+    input::Action,
+    server::{connection_config, NetworkedEntities},
     water::{GameState, Rocket},
     AppState,
 };
-use avian3d::{
-    math::Scalar,
-    prelude::{
-        CoefficientCombine, Collider, Friction, GravityScale, LinearVelocity, Restitution,
-        RigidBody, TransformInterpolation,
-    },
-};
+use avian3d::prelude::{
+        Collider, LinearVelocity,
+        RigidBody,
+    };
 use bevy::{
-    color::palettes::css::WHITE, pbr::NotShadowCaster, prelude::*, render::view::RenderLayers,
+    prelude::*,
     utils::HashMap,
 };
 use bevy_egui::EguiContexts;
@@ -33,11 +28,7 @@ use bevy_renet::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    camera::WorldCamera,
-    consts::VIEW_MODEL_RENDER_LAYER,
-    server::{ServerChannel, ServerMessages},
-};
+use crate::server::{ServerChannel, ServerMessages};
 
 use crate::network_visualizer::visualizer::{RenetClientVisualizer, RenetVisualizerStyle};
 use leafwing_input_manager::action_diff::{ActionDiff, ActionDiffEvent};
@@ -99,7 +90,7 @@ fn setup_client(mut commands: Commands) {
     commands.insert_resource(CurrentClientId(client_id));
 }
 
-fn send_message_system(mut client: ResMut<RenetClient>) {
+fn send_message_system(client: ResMut<RenetClient>) {
     // Send a text message to the server
     //debug!("Sending dummy message");
     //client.send_message(DefaultChannel::ReliableOrdered, "server message");
@@ -351,7 +342,7 @@ fn send_action_diffs<A: Actionlike + Serialize>(
     };
     for action_diff_event in action_diff_events.read() {
         if let Some(owner) = action_diff_event.owner {
-            let mut action_state = action_state_query.get_mut(owner).unwrap();
+            let action_state = action_state_query.get_mut(owner).unwrap();
             action_diff_event.action_diffs.iter().for_each(|diff| {
                 // @performance should we send entire vec maybe?
                 let input_message = bincode::serialize(&ClientAction {

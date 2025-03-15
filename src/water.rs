@@ -315,7 +315,7 @@ fn handle_rocket_explosion(
         debug!("explosion at {:?}", ev.pos);
         commands.entity(ev.ent).despawn();
 
-        for (mut player_vel, player_tf, mut player_health) in players_q.iter_mut() {
+        for (mut player_vel, player_tf, player_health) in players_q.iter_mut() {
             debug!("player health {:?}", player_health);
             if player_tf.translation.distance(ev.pos) <= ROCKET_EXPLOSION_RADIUS {
                 let distance = player_tf.translation - ev.pos;
