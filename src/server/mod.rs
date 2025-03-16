@@ -1,3 +1,4 @@
+pub mod death;
 pub mod server;
 pub mod server_camera;
 
