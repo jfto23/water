@@ -2,10 +2,7 @@ pub struct UiPlugin;
 
 use bevy::prelude::*;
 
-use crate::{
-    menu::despawn_screen,
-    water::GameState,
-};
+use crate::{menu::despawn_screen, water::GameState};
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
@@ -23,6 +20,10 @@ fn setup_ui_camera(mut commands: Commands) {
         Name::new("Ui Camera"),
         UiCamera,
         Camera2d::default(),
+        Camera {
+            order: 10,
+            ..default()
+        },
         Transform::default(),
     ));
 }

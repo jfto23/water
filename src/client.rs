@@ -16,6 +16,7 @@ use avian3d::prelude::{Collider, LinearVelocity, RigidBody};
 use bevy::{prelude::*, utils::HashMap};
 use bevy_egui::EguiContexts;
 use bevy_renet::{
+    client_connected,
     netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport},
     renet::{ChannelConfig, ClientId, RenetClient, SendType},
     RenetClientPlugin,
@@ -32,7 +33,7 @@ use leafwing_input_manager::systems::generate_action_diffs;
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&self, mut app: &mut App) {
         app.add_plugins(RenetClientPlugin);
 
         let client = RenetClient::new(connection_config());
@@ -41,7 +42,11 @@ impl Plugin for ClientPlugin {
         // Setup the transport layer
         app.add_plugins(NetcodeClientPlugin);
 
-        app.add_systems(OnEnter(GameState::Game), setup_client);
+        #[cfg(feature = "netcode")]
+        setup_client_netcode(&mut app);
+
+        #[cfg(feature = "steam")]
+        add_steam_network(&mut app);
 
         app.add_plugins(InputManagerPlugin::<Action>::default());
 
@@ -55,15 +60,24 @@ impl Plugin for ClientPlugin {
         app.add_systems(PostUpdate, generate_action_diffs::<Action>);
         app.add_systems(
             FixedUpdate,
-            send_action_diffs::<Action>.run_if(in_state(AppState::Main)),
+            send_action_diffs::<Action>
+                .run_if(in_state(AppState::Main))
+                .in_set(Connected),
         );
-        app.add_systems(FixedUpdate, (send_message_system, receive_message_system));
+        app.add_systems(
+            FixedUpdate,
+            (send_message_system, receive_message_system).in_set(Connected),
+        );
         app.add_systems(Update, update_visualizer_system);
         app.add_event::<ActionDiffEvent<Action>>();
     }
 }
 
-fn setup_client(mut commands: Commands) {
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Connected;
+
+#[cfg(feature = "netcode")]
+fn setup_client_netcode(mut app: &mut App) {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let current_time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -80,8 +94,51 @@ fn setup_client(mut commands: Commands) {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap();
     let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
-    commands.insert_resource(transport);
-    commands.insert_resource(CurrentClientId(client_id));
+    app.configure_sets(FixedUpdate, Connected.run_if(client_connected));
+    app.insert_resource(transport);
+    app.insert_resource(CurrentClientId(client_id));
+}
+
+#[cfg(feature = "steam")]
+fn add_steam_network(app: &mut App) {
+    use bevy_renet::client_connected;
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use steamworks::{SingleClient, SteamId};
+
+    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+
+    steam_client.networking_utils().init_relay_network_access();
+
+    let args: Vec<String> = std::env::args().collect();
+    let server_steam_id: u64 = args[2].parse().unwrap();
+    let server_steam_id = SteamId::from_raw(server_steam_id);
+
+    let client = RenetClient::new(connection_config());
+    let transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
+
+    app.add_plugins(SteamClientPlugin);
+    app.insert_resource(client);
+    app.insert_resource(transport);
+    app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
+
+    app.configure_sets(FixedUpdate, Connected.run_if(client_connected));
+
+    app.insert_non_send_resource(single);
+    fn steam_callbacks(client: NonSend<SingleClient>) {
+        client.run_callbacks();
+    }
+
+    app.add_systems(PreUpdate, steam_callbacks);
+
+    // If any error is found we just panic
+    #[allow(clippy::never_loop)]
+    fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
+        for e in renet_error.read() {
+            panic!("{}", e);
+        }
+    }
+
+    app.add_systems(Update, panic_on_error_system);
 }
 
 fn send_message_system(client: ResMut<RenetClient>) {

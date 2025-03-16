@@ -3,6 +3,7 @@ pub struct MenuPlugin;
 use crate::water::GameState;
 
 use bevy::app::AppExit;
+use bevy::color::palettes::css::BLACK;
 use bevy::prelude::*;
 
 const TEXT_COLOR: Color = Color::srgb(0.9, 0.9, 0.9);
@@ -179,13 +180,13 @@ fn main_menu_setup(mut commands: Commands) {
                 ..default()
             },
             OnMainMenuScreen,
+            BackgroundColor(BLACK.into()),
         ))
         .with_children(|parent| {
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    //background_color: BLACK.into(),
                     ..default()
                 })
                 .with_children(|parent| {
