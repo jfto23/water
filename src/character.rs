@@ -230,7 +230,7 @@ fn movement(
 }
 
 // moves all players based on their intent
-fn movement_2(
+pub fn movement_2(
     time_fixed: Res<Time<Fixed>>,
     mut controllers: Query<(&MovementAcceleration, &mut LinearVelocity, &MovementIntent)>,
 ) {

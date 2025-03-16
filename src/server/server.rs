@@ -49,18 +49,23 @@ impl Plugin for ServerPlugin {
 
         app.add_systems(OnEnter(GameState::Game), spawn_camera);
         // todo: the server starts at startup, but it should start when choosing the option to host
+        #[cfg(feature = "netcode")]
         add_netcode_network(&mut app);
+
+        #[cfg(feature = "steam")]
+        add_steam_network(&mut app);
         app.add_systems(
             Update,
             (server_camera_controller, server_camera_look).run_if(in_state(AppState::Main)),
         );
         app.insert_resource(RenetServerVisualizer::<200>::default());
 
-        app.add_systems(FixedUpdate, handle_events_system);
-        app.add_systems(FixedUpdate, (check_player_death, respawn_player));
         app.add_systems(
             FixedUpdate,
             (
+                check_player_death,
+                respawn_player,
+                handle_events_system,
                 handle_server_player_action,
                 server_mouse,
                 tick_shoot_cooldown, //server_network_sync,
@@ -78,12 +83,13 @@ impl Plugin for ServerPlugin {
         app.add_systems(Update, update_visualizer_system);
 
         app.add_systems(PreUpdate, update_client_input_state);
-        app.add_systems(FixedUpdate, read_client_input_state);
+        app.add_systems(FixedUpdate, read_client_input_state.before(movement_2));
 
         app.add_event::<ServerPlayerAction>();
     }
 }
 
+#[cfg(feature = "netcode")]
 fn add_netcode_network(app: &mut App) {
     app.add_plugins(NetcodeServerPlugin);
 
@@ -103,6 +109,35 @@ fn add_netcode_network(app: &mut App) {
     let transport = NetcodeServerTransport::new(server_config, socket).unwrap();
     app.insert_resource(server);
     app.insert_resource(transport);
+}
+
+#[cfg(feature = "steam")]
+fn add_steam_network(app: &mut App) {
+    use bevy_renet::steam::{
+        AccessPermission, SteamServerConfig, SteamServerPlugin, SteamServerTransport,
+    };
+    use steamworks::SingleClient;
+
+    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+
+    let server: RenetServer = RenetServer::new(connection_config());
+
+    let steam_transport_config = SteamServerConfig {
+        max_clients: 10,
+        access_permission: AccessPermission::Public,
+    };
+    let transport = SteamServerTransport::new(&steam_client, steam_transport_config).unwrap();
+
+    app.add_plugins(SteamServerPlugin);
+    app.insert_resource(server);
+    app.insert_non_send_resource(transport);
+    app.insert_non_send_resource(single);
+
+    fn steam_callbacks(client: NonSend<SingleClient>) {
+        client.run_callbacks();
+    }
+
+    app.add_systems(PreUpdate, steam_callbacks);
 }
 
 fn send_message_system(server: ResMut<RenetServer>) {
@@ -251,7 +286,9 @@ fn handle_events_system(
                 debug!("Client {client_id} disconnected: {reason}");
                 visualizer.remove_client(*client_id);
                 if let Some(player_entity) = lobby.players.remove(client_id) {
-                    commands.entity(player_entity).try_despawn_recursive();
+                    if let Some(commands) = commands.get_entity(player_entity) {
+                        commands.try_despawn_recursive();
+                    }
                 }
 
                 let message =
@@ -306,7 +343,7 @@ fn update_client_input_state(
     }
 }
 
-// reads all clients input maps and sends MovementAction event
+// reads all clients input maps. Sends ServerPlayerAction event and updates movement intent
 fn read_client_input_state(
     mut clients_q: Query<(
         &ActionState<Action>,

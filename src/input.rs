@@ -61,7 +61,7 @@ fn read_input_map(
         move_intent.0 = Vector3::ZERO;
     }
 
-    if action_state.just_pressed(&Action::Jump) {
+    if action_state.pressed(&Action::Jump) {
         movement_event_writer.send(PlayerAction::Jump);
     }
 }
