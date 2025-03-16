@@ -99,9 +99,6 @@ fn setup_client_netcode(mut commands: Commands) {
     commands.insert_resource(CurrentClientId(client_id));
 }
 
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Connected;
-
 #[cfg(feature = "steam")]
 fn add_steam_network(app: &mut App) {
     use bevy_renet::client_connected;
@@ -113,7 +110,7 @@ fn add_steam_network(app: &mut App) {
     steam_client.networking_utils().init_relay_network_access();
 
     let args: Vec<String> = std::env::args().collect();
-    let server_steam_id: u64 = args[1].parse().unwrap();
+    let server_steam_id: u64 = args[2].parse().unwrap();
     let server_steam_id = SteamId::from_raw(server_steam_id);
 
     let client = RenetClient::new(connection_config());
