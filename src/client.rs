@@ -43,7 +43,7 @@ impl Plugin for ClientPlugin {
         app.add_plugins(NetcodeClientPlugin);
 
         #[cfg(feature = "netcode")]
-        app.add_systems(OnEnter(GameState::Game), setup_client_netcode);
+        setup_client_netcode(&mut app);
 
         #[cfg(feature = "steam")]
         add_steam_network(&mut app);
@@ -77,7 +77,7 @@ impl Plugin for ClientPlugin {
 struct Connected;
 
 #[cfg(feature = "netcode")]
-fn setup_client_netcode(mut commands: Commands) {
+fn setup_client_netcode(mut app: &mut App) {
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let current_time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -95,8 +95,8 @@ fn setup_client_netcode(mut commands: Commands) {
         .unwrap();
     let transport = NetcodeClientTransport::new(current_time, authentication, socket).unwrap();
     app.configure_sets(FixedUpdate, Connected.run_if(client_connected));
-    commands.insert_resource(transport);
-    commands.insert_resource(CurrentClientId(client_id));
+    app.insert_resource(transport);
+    app.insert_resource(CurrentClientId(client_id));
 }
 
 #[cfg(feature = "steam")]
