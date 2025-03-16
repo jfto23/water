@@ -51,17 +51,21 @@ impl Plugin for ServerPlugin {
         // todo: the server starts at startup, but it should start when choosing the option to host
         #[cfg(feature = "netcode")]
         add_netcode_network(&mut app);
+
+        #[cfg(feature = "steam")]
+        add_steam_network(&mut app);
         app.add_systems(
             Update,
             (server_camera_controller, server_camera_look).run_if(in_state(AppState::Main)),
         );
         app.insert_resource(RenetServerVisualizer::<200>::default());
 
-        app.add_systems(FixedUpdate, handle_events_system);
-        app.add_systems(FixedUpdate, (check_player_death, respawn_player));
         app.add_systems(
             FixedUpdate,
             (
+                check_player_death,
+                respawn_player,
+                handle_events_system,
                 handle_server_player_action,
                 server_mouse,
                 tick_shoot_cooldown, //server_network_sync,
