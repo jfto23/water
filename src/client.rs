@@ -18,6 +18,7 @@ use bevy_egui::EguiContexts;
 use bevy_renet::{
     netcode::{ClientAuthentication, NetcodeClientPlugin, NetcodeClientTransport},
     renet::{ChannelConfig, ClientId, RenetClient, SendType},
+    client_connected,
     RenetClientPlugin,
 };
 use serde::{Deserialize, Serialize};
@@ -41,7 +42,11 @@ impl Plugin for ClientPlugin {
         // Setup the transport layer
         app.add_plugins(NetcodeClientPlugin);
 
-        app.add_systems(OnEnter(GameState::Game), setup_client);
+        #[cfg(feature = "netcode")]
+        app.add_systems(OnEnter(GameState::Game), setup_client_netcode);
+
+        #[cfg(feature = "steam")]
+        app.add_systems(OnEnter(GameState::Game), setup_client_steam);
 
         app.add_plugins(InputManagerPlugin::<Action>::default());
 
@@ -63,7 +68,9 @@ impl Plugin for ClientPlugin {
     }
 }
 
-fn setup_client(mut commands: Commands) {
+#[cfg(feature = "netcode")]
+fn setup_client_netcode(mut commands: Commands) {
+
     let server_addr = "127.0.0.1:5000".parse().unwrap();
     let current_time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -83,6 +90,54 @@ fn setup_client(mut commands: Commands) {
     commands.insert_resource(transport);
     commands.insert_resource(CurrentClientId(client_id));
 }
+
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Connected;
+
+
+#[cfg(feature = "steam")]
+fn setup_client_steam(app: &mut App) {
+    use bevy_renet::steam::{SteamClientPlugin, SteamClientTransport, SteamTransportError};
+    use steamworks::{SingleClient, SteamId};
+    use bevy_renet::client_connected;
+
+    let (steam_client, single) = steamworks::Client::init_app(480).unwrap();
+
+    steam_client.networking_utils().init_relay_network_access();
+
+    let args: Vec<String> = std::env::args().collect();
+    let server_steam_id: u64 = args[1].parse().unwrap();
+    let server_steam_id = SteamId::from_raw(server_steam_id);
+
+    let client = RenetClient::new(connection_config());
+    let transport = SteamClientTransport::new(&steam_client, &server_steam_id).unwrap();
+
+    app.add_plugins(SteamClientPlugin);
+    app.insert_resource(client);
+    app.insert_resource(transport);
+    app.insert_resource(CurrentClientId(steam_client.user().steam_id().raw()));
+
+    app.configure_sets(Update, Connected.run_if(client_connected));
+
+
+    app.insert_non_send_resource(single);
+    fn steam_callbacks(client: NonSend<SingleClient>) {
+        client.run_callbacks();
+    }
+
+    app.add_systems(PreUpdate, steam_callbacks);
+
+    // If any error is found we just panic
+    #[allow(clippy::never_loop)]
+    fn panic_on_error_system(mut renet_error: EventReader<SteamTransportError>) {
+        for e in renet_error.read() {
+            panic!("{}", e);
+        }
+    }
+
+    app.add_systems(Update, panic_on_error_system);
+}
+
 
 fn send_message_system(client: ResMut<RenetClient>) {
     // Send a text message to the server
